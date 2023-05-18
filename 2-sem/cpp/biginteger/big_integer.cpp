@@ -1,24 +1,23 @@
 #include "big_integer.h"
 
 #include <algorithm>
-#include <cstddef>
-#include <cstring>
+#include <compare>
 #include <ostream>
 #include <stdexcept>
 #include <vector>
 
-big_integer::big_integer() : sign(POSITIVE), big_digits(std::vector<uint32_t>()) {}
+big_integer::big_integer() = default;
 
-big_integer::big_integer(const big_integer& other) : sign(other.sign), big_digits(other.big_digits) {}
+big_integer::big_integer(const big_integer& other) = default;
 
 big_integer::big_integer(int a) : big_integer(static_cast<long long>(a)) {}
 
 big_integer::big_integer(long a) : big_integer(static_cast<long long>(a)) {}
 
-big_integer::big_integer(long long a) : sign((a >= 0) ? POSITIVE : NEGATIVE), big_digits(std::vector<uint32_t>()) {
+big_integer::big_integer(long long a) : sign((a >= 0) ? POSITIVE : NEGATIVE) {
   unsigned long long b = (a < 0) ? -static_cast<unsigned long long>(a) : a;
   while (b > 0) {
-    big_digits.push_back(b & UINT32_MAX);
+    big_digits.push_back(b);
     b >>= 32;
   }
   remove_zeros();
@@ -28,40 +27,108 @@ big_integer::big_integer(unsigned int a) : big_integer(static_cast<unsigned long
 
 big_integer::big_integer(unsigned long a) : big_integer(static_cast<unsigned long long>(a)) {}
 
-big_integer::big_integer(unsigned long long a) : sign(POSITIVE), big_digits(std::vector<uint32_t>()) {
+big_integer::big_integer(unsigned long long a) : sign(POSITIVE) {
   while (a > 0) {
-    big_digits.push_back(a & UINT32_MAX);
+    big_digits.push_back(a);
     a >>= 32;
   }
   remove_zeros();
 }
 
-big_integer::big_integer(const std::string& str) : sign(POSITIVE), big_digits(std::vector<uint32_t>()) {
+void big_integer::add(uint32_t rhs) {
+  if (sign == POSITIVE || big_digits.empty()) {
+    module_add(rhs);
+  } else {
+    module_subtract(rhs);
+  }
+}
+
+void big_integer::subtract(uint32_t rhs) {
+  if (sign == POSITIVE || big_digits.empty()) {
+    module_subtract(rhs);
+  } else {
+    module_add(rhs);
+  }
+}
+
+void big_integer::module_add(uint32_t rhs) {
+  uint64_t overflow = rhs;
+  for (size_t digit = 0; overflow > 0; digit++) {
+    if (digit < big_digits.size()) {
+      overflow += static_cast<uint64_t>(big_digits[digit]);
+      big_digits[digit] = overflow;
+      overflow = overflow >> 32;
+    } else {
+      big_digits.push_back(overflow);
+      return;
+    }
+  }
+}
+
+void big_integer::module_subtract(uint32_t rhs) {
+  if (big_digits.empty()) {
+    big_digits.push_back(rhs);
+    sign = NEGATIVE;
+    return;
+  } else if (big_digits[0] < rhs && big_digits.size() == 1) {
+    big_digits[0] = rhs - big_digits[0];
+    sign = !sign;
+    return;
+  }
+  uint64_t overflow = 1;
+  for (size_t digit = 0; digit < big_digits.size(); digit++) {
+    overflow = (static_cast<uint64_t>(1) << 32) + overflow - 1;
+    if (digit == 0) {
+      overflow -= rhs;
+    }
+    overflow += big_digits[digit];
+    big_digits[digit] = static_cast<uint32_t>(overflow & UINT32_MAX);
+    overflow = overflow >> 32;
+  }
+}
+
+big_integer::big_integer(const std::string& str) : sign(POSITIVE) {
   if (str.length() == 0 || str == "-") {
     throw std::invalid_argument("string in big_integer(std::string) is empty");
   }
   size_t i = 0;
+  bool result_sign = POSITIVE;
   if (str[i] == '-') {
-    sign = NEGATIVE;
+    result_sign = NEGATIVE;
     i++;
   }
+  uint32_t digit = 0;
+  uint32_t big_radix = 1;
   for (; i < str.size(); i++) {
     if (str[i] < '0' || str[i] > '9') {
       throw std::invalid_argument("string is unable to parse to big_integer: " + str);
     }
-    *this *= RADIX;
-    *this += big_integer((str[i] - '0') * ((sign == big_integer::POSITIVE)? 1 : -1));
+    digit = digit * RADIX + (str[i] - '0');
+    big_radix *= RADIX;
+    if (big_radix == BIG_RADIX) {
+      multiply(BIG_RADIX);
+      add(digit);
+      digit = 0;
+      big_radix = 1;
+    }
   }
+  multiply(big_radix);
+  add(digit);
+  sign = result_sign;
 }
 
 big_integer::~big_integer() = default;
 
 void big_integer::remove_zeros() {
-  for (; !big_digits.empty() && big_digits.back() == 0; big_digits.pop_back())
-    ;
+  while (!big_digits.empty() && big_digits.back() == 0) {
+    big_digits.pop_back();
+  }
 }
 
 big_integer& big_integer::operator=(const big_integer& other) {
+  if (this == &other) {
+    return *this;
+  }
   big_digits = other.big_digits;
   sign = other.sign;
   return *this;
@@ -79,7 +146,7 @@ void big_integer::add(std::vector<uint32_t>::iterator result, std::vector<uint32
     if (digit < big_digits.size()) {
       overflow += static_cast<uint64_t>(big_digits[digit]);
     }
-    *result = static_cast<uint32_t>(overflow & UINT32_MAX);
+    *result = static_cast<uint32_t>(overflow);
     overflow = overflow >> 32;
   }
 }
@@ -94,7 +161,7 @@ void big_integer::subtract(std::vector<uint32_t>::iterator result, std::vector<u
       other++;
     }
     overflow += big_digits[digit];
-    *result = static_cast<uint32_t>(overflow & UINT32_MAX);
+    *result = static_cast<uint32_t>(overflow);
     overflow = overflow >> 32;
   }
 }
@@ -114,9 +181,7 @@ uint32_t big_integer::divide(uint32_t rhs) {
 }
 
 big_integer& big_integer::operator+=(const big_integer& rhs) {
-  while (rhs.big_digits.size() > big_digits.size()) {
-    big_digits.push_back(0);
-  }
+  big_digits.resize(std::max(rhs.big_digits.size(), big_digits.size()));
   if (sign == rhs.sign) {
     big_digits.push_back(0);
     add(big_digits.begin(), rhs.big_digits.begin(), rhs.big_digits.size());
@@ -133,20 +198,38 @@ big_integer& big_integer::operator+=(const big_integer& rhs) {
 }
 
 big_integer& big_integer::operator-=(const big_integer& rhs) {
-  return (*this += -rhs);
+  sign = !sign;
+  *this += rhs;
+  sign = !sign;
+  return *this;
 }
 
 big_integer& big_integer::operator*=(const big_integer& rhs) {
-  sign = (sign == rhs.sign) ? POSITIVE : NEGATIVE;
-  std::vector<uint32_t> result(big_digits.size() + rhs.big_digits.size(), 0);
-
-  auto product_result = result.begin();
-  for (size_t i = 0; i < big_digits.size(); i++, product_result++) {
-    big_integer product = rhs;
-    product *= big_digits[i];
-    product.add(product_result, product_result, result.end() - product_result);
+  if (big_digits.empty()) {
+    return *this;
   }
-  big_digits = result;
+  sign = (sign == rhs.sign) ? POSITIVE : NEGATIVE;
+  size_t first_size = big_digits.size();
+  big_digits.resize(big_digits.size() + rhs.big_digits.size() + 1);
+  for (size_t i = first_size; i > 0; i--) {
+    uint64_t mul_digit = big_digits[i - 1];
+    big_digits[i - 1] = 0;
+    first_size--;
+
+    uint64_t mul_overflow = 0;
+    uint64_t add_overflow = 0;
+    size_t digit;
+
+    for (digit = 0; mul_overflow > 0 || add_overflow > 0 || digit < rhs.big_digits.size(); digit++) {
+      if (digit < rhs.big_digits.size()) {
+        mul_overflow += mul_digit * static_cast<uint64_t>(rhs.big_digits[digit]);
+      }
+      add_overflow += (mul_overflow & UINT32_MAX) + static_cast<uint64_t>(big_digits[first_size + digit]);
+      big_digits[first_size + digit] = static_cast<uint32_t>(add_overflow);
+      mul_overflow = mul_overflow >> 32;
+      add_overflow = add_overflow >> 32;
+    }
+  }
   remove_zeros();
   return *this;
 }
@@ -156,20 +239,31 @@ void big_integer::divide(const big_integer& first, const big_integer& second, bi
   if (second.big_digits.empty()) {
     throw std::logic_error("division by zero");
   }
+  if (first.big_digits.empty()) {
+    quotient = 0;
+    remainder = 0;
+    return;
+  }
 
-  quotient.sign = (first.sign == second.sign)? big_integer::POSITIVE : big_integer::NEGATIVE;
+  bool remainder_sign = first.sign;
 
-  int first_size = 32 * first.big_digits.size() - 32, second_size = 32 * second.big_digits.size() - 32;
+  quotient.sign = (first.sign == second.sign) ? POSITIVE : NEGATIVE;
 
-  for (uint32_t i = first.big_digits.back(); i != 0; first_size++, i >>= 1)
-    ;
-  for (uint32_t i = second.big_digits.back(); i != 0; second_size++, i >>= 1)
-    ;
+  size_t first_size = 32 * first.big_digits.size() - 32;
+  size_t second_size = 32 * second.big_digits.size() - 32;
+
+  for (uint32_t i = first.big_digits.back(); i != 0; i >>= 1) {
+    first_size++;
+  }
+  for (uint32_t i = second.big_digits.back(); i != 0; i >>= 1) {
+    second_size++;
+  }
 
   remainder = abs(first);
 
   if (first_size < second_size) {
     quotient = 0;
+    remainder.sign = remainder_sign;
     return;
   }
 
@@ -184,9 +278,7 @@ void big_integer::divide(const big_integer& first, const big_integer& second, bi
   }
   quotient.remove_zeros();
   remainder.remove_zeros();
-  if (quotient.sign == big_integer::NEGATIVE && !remainder.big_digits.empty()) {
-    remainder = second - remainder;
-  }
+  remainder.sign = remainder_sign;
 }
 
 big_integer& big_integer::operator/=(const big_integer& rhs) {
@@ -201,32 +293,60 @@ big_integer& big_integer::operator%=(const big_integer& rhs) {
   return *this;
 }
 
-big_integer& big_integer::operator*=(uint32_t rhs) {
+void big_integer::multiply(uint32_t rhs) {
   uint64_t overflow = 0;
   for (size_t digit = 0; digit < big_digits.size(); digit++) {
     overflow += static_cast<uint64_t>(rhs) * static_cast<uint64_t>(big_digits[digit]);
-    big_digits[digit] = static_cast<uint32_t>(overflow & UINT32_MAX);
+    big_digits[digit] = static_cast<uint32_t>(overflow);
     overflow = overflow >> 32;
   }
   if (overflow > 0) {
-    big_digits.push_back(static_cast<uint32_t>(overflow & UINT32_MAX));
+    big_digits.push_back(static_cast<uint32_t>(overflow));
   }
   remove_zeros();
-  return *this;
+}
+
+uint32_t big_integer::evaluate_according_digits(uint32_t start_value, uint32_t value, bool sign, bool& decrement,
+                                                uint32_t (*function)(uint32_t, uint32_t)) {
+  if (sign == NEGATIVE) {
+    if (!decrement) {
+      if (value > 0) {
+        value--;
+        decrement = true;
+        return function(start_value, ~value);
+      } else {
+        return function(start_value, 0);
+      }
+    } else {
+      return function(start_value, ~value);
+    }
+  } else {
+    return function(start_value, value);
+  }
 }
 
 void big_integer::according_operator(const big_integer& rhs, uint32_t (*function)(uint32_t, uint32_t),
                                      uint32_t start_value) {
-  for (size_t digit = 0; digit < rhs.big_digits.size() || digit < big_digits.size(); digit++) {
+  bool first_decrement = false;
+  bool second_decrement = false;
+  size_t size = std::max(big_digits.size(), rhs.big_digits.size()) + 1;
+  bool first_sign = (sign == NEGATIVE && big_digits.size() > 0) ? NEGATIVE : POSITIVE;
+  bool second_sign = (rhs.sign == NEGATIVE && rhs.big_digits.size() > 0) ? NEGATIVE : POSITIVE;
+  big_digits.resize(size);
+  for (size_t i = 0; i < size; i++) {
     uint32_t result = start_value;
-    if (digit < rhs.big_digits.size()) {
-      result = function(result, rhs.big_digits[digit]);
+    result = evaluate_according_digits(result, big_digits[i], first_sign, first_decrement, function);
+    big_digits[i] = evaluate_according_digits(result, (i < rhs.big_digits.size()) ? rhs.big_digits[i] : 0, second_sign,
+                                              second_decrement, function);
+  }
+  if (big_digits.back() >> 31) {
+    sign = NEGATIVE;
+    add(1);
+    for (size_t i = 0; i < big_digits.size(); i++) {
+      big_digits[i] = ~big_digits[i];
     }
-    if (digit < big_digits.size()) {
-      big_digits[digit] = function(big_digits[digit], result);
-    } else {
-      big_digits.push_back(result);
-    }
+  } else {
+    sign = POSITIVE;
   }
   remove_zeros();
 }
@@ -252,14 +372,12 @@ big_integer& big_integer::operator^=(const big_integer& rhs) {
 big_integer& big_integer::operator<<=(int rhs) {
   size_t new_digits = rhs / 32;
   size_t offset = rhs % 32;
-  for (size_t i = 0; i <= new_digits + 1; i++) {
-    big_digits.push_back(0);
-  }
+  big_digits.resize(big_digits.size() + new_digits + 1);
   for (size_t i = big_digits.size(); i > 0; i--) {
-    if (i >= new_digits + 2) {
+    if (i >= new_digits + 2 && offset != 0) {
       big_digits[i - 1] =
           (big_digits[i - new_digits - 1] << offset) + (big_digits[i - new_digits - 2] >> (32 - offset));
-    } else if (i == new_digits + 1) {
+    } else if (i >= new_digits + 1) {
       big_digits[i - 1] = (big_digits[i - new_digits - 1] << offset);
     } else {
       big_digits[i - 1] = 0;
@@ -275,11 +393,18 @@ big_integer& big_integer::operator>>=(int rhs) {
   big_digits.push_back(0);
   for (size_t i = 0; i < big_digits.size() - 1; i++) {
     if (i + removed_digits < big_digits.size() - 1) {
-      big_digits[i] =
-          (big_digits[i + removed_digits] >> offset) + (big_digits[i + removed_digits + 1] << (32 - offset));
+      if (offset != 0) {
+        big_digits[i] =
+            (big_digits[i + removed_digits] >> offset) + (big_digits[i + removed_digits + 1] << (32 - offset));
+      } else {
+        big_digits[i] = big_digits[i + removed_digits];
+      }
     } else {
       big_digits[i] = 0;
     }
+  }
+  if (sign == NEGATIVE) {
+    *this -= 1;
   }
   remove_zeros();
   return *this;
@@ -296,7 +421,7 @@ big_integer big_integer::operator-() const {
 }
 
 big_integer big_integer::operator~() const {
-  if (*this == big_integer(0)) {
+  if (big_digits.empty()) {
     return -1;
   } else if (sign == POSITIVE) {
     return -(*this + 1);
@@ -306,7 +431,7 @@ big_integer big_integer::operator~() const {
 }
 
 big_integer& big_integer::operator++() {
-  *this += 1;
+  add(1);
   return *this;
 }
 
@@ -317,7 +442,7 @@ big_integer big_integer::operator++(int) {
 }
 
 big_integer& big_integer::operator--() {
-  *this -= 1;
+  subtract(1);
   return *this;
 }
 
@@ -367,44 +492,28 @@ big_integer operator>>(const big_integer& a, int b) {
   return big_integer(a) >>= b;
 }
 
-big_integer::RATIO big_integer::get_ratio(const big_integer& other) const {
-  if (big_digits.size() == 0 && other.big_digits.size() == 0) {
-    return RATIO::EQUAL;
-  } else if (sign != other.sign) {
-    return (sign == POSITIVE) ? RATIO::MORE : RATIO::LESS;
-  } else if (big_digits.size() != other.big_digits.size()) {
-    return (big_digits.size() > other.big_digits.size()) ? RATIO::MORE : RATIO::LESS;
+std::strong_ordering big_integer::operator<=>(const big_integer& rhs) const {
+  if (big_digits.empty() && rhs.big_digits.empty()) {
+    return std::strong_ordering::equal;
+  } else if (sign != rhs.sign) {
+    return (sign == POSITIVE) ? std::strong_ordering::greater : std::strong_ordering::less;
+  } else if (big_digits.size() != rhs.big_digits.size()) {
+    bool more = big_digits.size() > rhs.big_digits.size();
+    return ((more && sign == POSITIVE) || (!more && sign == NEGATIVE)) ? std::strong_ordering::greater
+                                                                       : std::strong_ordering::less;
   }
-  for (int digit = static_cast<int>(big_digits.size()) - 1; digit >= 0; digit--) {
-    if (big_digits[digit] != other.big_digits[digit]) {
-      return (big_digits[digit] > other.big_digits[digit]) ? RATIO::MORE : RATIO::LESS;
+  for (size_t digit = big_digits.size(); digit > 0; digit--) {
+    if (big_digits[digit - 1] != rhs.big_digits[digit - 1]) {
+      bool more = big_digits[digit - 1] > rhs.big_digits[digit - 1];
+      return ((more && sign == POSITIVE) || (!more && sign == NEGATIVE)) ? std::strong_ordering::greater
+                                                                         : std::strong_ordering::less;
     }
   }
-  return RATIO::EQUAL;
+  return std::strong_ordering::equal;
 }
 
-bool operator==(const big_integer& a, const big_integer& b) {
-  return a.get_ratio(b) == big_integer::RATIO::EQUAL;
-}
-
-bool operator!=(const big_integer& a, const big_integer& b) {
-  return !(a == b);
-}
-
-bool operator<(const big_integer& a, const big_integer& b) {
-  return a.get_ratio(b) == big_integer::RATIO::LESS;
-}
-
-bool operator>(const big_integer& a, const big_integer& b) {
-  return a.get_ratio(b) == big_integer::RATIO::MORE;
-}
-
-bool operator<=(const big_integer& a, const big_integer& b) {
-  return !(a > b);
-}
-
-bool operator>=(const big_integer& a, const big_integer& b) {
-  return !(a < b);
+bool big_integer::operator==(const big_integer& rhs) const {
+  return operator<=>(rhs) == std::strong_ordering::equal;
 }
 
 big_integer abs(const big_integer& a) {
@@ -417,12 +526,19 @@ std::string to_string(const big_integer& a) {
   if (a.big_digits.size() == 0) {
     return "0";
   }
-  std::vector<char> reversed_string;
+  std::string reversed_string;
 
   big_integer a_copy = a;
 
   while (a_copy.big_digits.size() > 0) {
-    reversed_string.push_back(static_cast<char>(a_copy.divide(big_integer::RADIX)) + '0');
+    uint32_t digit = a_copy.divide(big_integer::BIG_RADIX);
+    for (uint32_t i = 1; i < big_integer::BIG_RADIX; i *= big_integer::RADIX) {
+      reversed_string.push_back(static_cast<char>(digit % big_integer::RADIX) + '0');
+      digit /= big_integer::RADIX;
+    }
+  }
+  while (reversed_string.back() == '0') {
+    reversed_string.pop_back();
   }
   if (a.sign == big_integer::NEGATIVE) {
     reversed_string.push_back('-');
@@ -430,7 +546,7 @@ std::string to_string(const big_integer& a) {
 
   std::reverse(reversed_string.begin(), reversed_string.end());
 
-  return std::string(reversed_string.begin(), reversed_string.end());
+  return reversed_string;
 }
 
 std::ostream& operator<<(std::ostream& out, const big_integer& a) {
