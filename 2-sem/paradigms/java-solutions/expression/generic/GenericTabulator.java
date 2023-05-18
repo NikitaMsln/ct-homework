@@ -4,7 +4,17 @@ import expression.exceptions.EvaluateException;
 import expression.exceptions.ParsingException;
 import expression.generic.generators.*;
 
+import java.util.Map;
+
 public class GenericTabulator implements Tabulator {
+    private static final Map<String, ExpressionGenerator<?>> TYPES = Map.of(
+            "i", new CheckedIntegerGenerator(),
+            "u", new UncheckedIntegerGenerator(),
+            "p", new ModIntegerGenerator(),
+            "d", new DoubleGenerator(),
+            "s", new ShortGenerator(),
+            "bi", new BigIntegerGenerator()
+    );
     private static class Tabulator<T> {
         private GenericExpression<T> expression;
         private final ExpressionGenerator<T> generator;
@@ -25,17 +35,14 @@ public class GenericTabulator implements Tabulator {
         }
     }
 
+    @Override
     public Object[][][] tabulate(final String mode, final String expression, final int x1, final int x2, final int y1, final int y2, final int z1, final int z2) throws ParsingException {
-        // :NOTE: -> Map<String, ExpressionGenerator<?>>
-        final Tabulator<?> tabulator =  switch (mode) {
-            case "i" -> new Tabulator<>(new CheckedIntegerGenerator());
-            case "u" -> new Tabulator<>(new UncheckedIntegerGenerator());
-            case "p" -> new Tabulator<>(new ModIntegerGenerator());
-            case "d" -> new Tabulator<>(new DoubleGenerator());
-            case "s" -> new Tabulator<>(new ShortGenerator());
-            case "bi" -> new Tabulator<>(new BigIntegerGenerator());
-            default -> throw new ParsingException("Mode \"" + mode + "\" is undefined");
-        };
+        Tabulator<?> tabulator;
+        if (TYPES.containsKey(mode)) {
+            tabulator = new Tabulator<>(TYPES.get(mode));
+        } else {
+            throw new ParsingException("Mode \"" + mode + "\" is undefined");
+        }
 
         tabulator.setExpression(expression);
 
