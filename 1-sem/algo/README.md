@@ -1,0 +1,1 @@
+### Lab from https://codeforces.com/gym/399135
