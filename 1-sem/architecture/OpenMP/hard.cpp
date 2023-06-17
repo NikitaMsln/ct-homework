@@ -213,7 +213,7 @@ int main(int argc, char **argv) {
     if (use_openmp) {
         #pragma omp parallel default(none) shared(data, max_borders, data_size)
         {
-            #pragma omp for schedule(static)
+            #pragma omp for schedule(SCHEDULE_PARAM, SCHEDULE_CHUNK_COUNT)
             for (int i = 0; i < data_size; i++) {
                 if (data[i] < max_borders[0]) data[i] = 0;
                 else if (data[i] < max_borders[1]) data[i] = 84;
