@@ -12,14 +12,27 @@ public:
         }
     }
 
-    ways_matrix(const size_t (&matrix)[3][3]) noexcept {
-        set(matrix);
+    ways_matrix(const size_t (&other_matrix)[3][3]) noexcept {
+        set(other_matrix);
     }
 
-    void set(const size_t (&matrix)[3][3]) noexcept {
+    ways_matrix &operator=(const ways_matrix &other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+
         for (size_t i = 0; i < 3; i++) {
             for (size_t j = 0; j < 3; j++) {
-                this->matrix[i][j] = matrix[i][j];
+                matrix[i][j] = other(i, j);
+            }
+        }
+        return *this;
+    }
+
+    void set(const size_t (&other_matrix)[3][3]) noexcept {
+        for (size_t i = 0; i < 3; i++) {
+            for (size_t j = 0; j < 3; j++) {
+                matrix[i][j] = other_matrix[i][j];
             }
         }
     }
@@ -44,15 +57,30 @@ private:
     size_t matrix[3][3];
 };
 
-static const ways_matrix E({{0, 0, 1}, {1, 0, 1}, {0, 1, 1}});
-static const ways_matrix Z;
+static const ways_matrix E(
+        {
+                {0, 0, 1},
+                {1, 0, 1},
+                {0, 1, 1}
+        }
+);
+
+static const ways_matrix Z(
+        {
+                {0, 0, 0},
+                {1, 0, 0},
+                {0, 1, 0}
+        }
+);
+
+static const size_t MOD = 1'000'000'007;
 
 ways_matrix operator*(const ways_matrix &first, const ways_matrix &second) noexcept {
     ways_matrix result;
     for (size_t i = 0; i < 3; i++) {
         for (size_t j = 0; j < 3; j++) {
             for (size_t x = 0; x < 3; x++) {
-                result(i, j) += first(i, x) * second(x, j);
+                result(i, j) = (result(i, j) + (first(i, x) * second(x, j) % MOD)) % MOD;
             }
         }
     }
@@ -97,17 +125,15 @@ public:
         if (data_[index](2, 2) != 0) {
             data_[index] = Z;
         } else {
-            data_[index](0, 2) = data_[index](1, 2) = data_[index](2, 2) = data_[index](2, 1) = data_[index](1, 0) = 1;
+            data_[index] = E;
         }
         while (index > 1) {
             index /= 2;
-            data_[index] = data_[index * 2] * data_[index * 2 + 1];
+            concat(index);
         }
     }
 
 private:
-
-    static const size_t MOD = 1000000007;
     vector<ways_matrix> data_;
     vector<size_t> length_;
     size_t data_size_;
@@ -129,6 +155,9 @@ private:
 };
 
 int main() {
+    auto w2 = E * E;
+    auto w3 = E * w2;
+    auto w4 = w2 * w2;
     size_t n, m;
     cin >> n >> m;
     segment_tree st(n);
@@ -136,7 +165,7 @@ int main() {
     while (m--) {
         size_t index;
         cin >> index;
-        st.block(index);
+        st.block(index - 1);
         cout << st.ways_count() << "\n";
     }
 }
