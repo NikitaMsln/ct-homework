@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+
+import re
+
+from gradelib import *
+
+r = Runner(save("xv6.out"))
+
+@test(1, "usertests (slow)")
+def test_usertests():
+    r.run_qemu(shell_script([
+        'usertests -s'
+    ]), timeout=840)
+    r.match('^ALL TESTS PASSED$')
+
+    free_pages_lost = re.findall(r'Lost some free pages: \d+ out of \d+', r.qemu.output, re.MULTILINE)
+    if len(free_pages_lost) > 0:
+        print(f"\n::warning file=kernel/proc.c::{free_pages_lost[0]}")
+
+run_tests()

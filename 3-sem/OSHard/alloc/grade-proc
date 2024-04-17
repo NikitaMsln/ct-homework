@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+
+import re
+import time
+import typing
+
+from gradelib import *
+
+r = Runner(save("xv6.out"))
+
+
+def run_script(script: typing.Generator[str | bytes, bytes, None]):
+    """Returns a monitor that plays the generator until it terminates."""
+
+    next(script)  # Hack: .send() can't be executed on first loop, so we consume some unused value here
+
+    def setup_call_on_line(runner: Runner):
+        class context:
+            buf = bytearray()
+
+        def handle_output(output):
+            context.buf.extend(output)
+            if b'$ ' in context.buf:
+                try:
+                    next_command = script.send(context.buf)
+                except StopIteration:
+                    raise TerminateTest
+                context.buf = bytearray()
+                runner.qemu.write(next_command)
+                runner.qemu.write('\n')
+
+        runner.qemu.on_output.append(handle_output)
+    return setup_call_on_line
+
+
+@test(1, "forktest")
+def test_forktest():
+    r.run_qemu(shell_script([
+        'forktest',
+        'alloctest',
+        'forktest',
+        'alloctest'
+    ]), timeout=540)
+
+    matches = re.findall("^forktest: OK$", r.qemu.output, re.MULTILINE)
+    assert_equal(len(matches), 2, "Successful forktest runs")
+
+    matches = re.findall(r'^allocated (\d+) out of \d+ pages$', r.qemu.output, re.MULTILINE)
+    assert_equal(len(matches), 2, "memtest allocation reports")
+    assert_equal(matches[1], matches[0], "Available pages after second run")
+
+
+def parse_processes(output: bytes) -> int:
+    processes = {}
+
+    for line in output.decode("utf-8", "replace").splitlines():
+        if line.startswith("$") or len(line.strip()) == 0:
+            continue
+
+        try:
+            parent_addr, proc_addr, pid, *_ = line.strip().split()
+        except ValueError:
+            raise AssertionError(f"Invalid procdump() output: {line}")
+
+        assert parent_addr.startswith("0x"), "procdump() should print parent address as %p"
+        assert proc_addr.startswith("0x"), "procdump() should print child address as %p"
+
+        try:
+            parent_addr_num = int(parent_addr[2:], 16)
+            proc_addr_num = int(proc_addr[2:], 16)
+            pid = int(pid)
+        except ValueError:
+            raise AssertionError(f"Invalid procdump() output: {line}")
+
+        assert (parent_addr_num == 0) == (pid == 1), f"Process {pid} has invalid parent"
+        assert parent_addr_num != proc_addr_num, f"Process {pid} has itself as parent"
+
+        assert proc_addr_num not in processes, f"Process {proc_addr_num} occurs twice in procdump()"
+
+        processes[proc_addr_num] = (parent_addr_num, pid)
+
+    for proc_addr, (parent_addr, pid) in processes.items():
+        assert pid == 1 or parent_addr in processes, f"Process {pid} has invalid parent"
+
+    return len(processes)
+
+
+def reparentscript() -> typing.Generator[str | bytes, bytes, None]:
+    yield ""  # See first line in run_script()
+
+    yield "reparenttest small"
+    yield "reparenttest big"
+    
+    for i in range(10):
+        process_info = yield b'\x10'  # Ctrl-P
+        processes = parse_processes(process_info)
+        if processes == 2:
+            raise TerminateTest
+        if processes < 2:
+            raise AssertionError("Too few processes, either init or sh crashed")
+        time.sleep(0.2 * i)
+
+    raise AssertionError("Some processes are not cleaned up")
+
+
+@test(1, "reparenttest")
+def test_reparenttest():
+    r.run_qemu(
+        run_script(reparentscript()),
+        timeout=540
+    )
+
+    matches = re.findall("^reparenttest: OK$", r.qemu.output, re.MULTILINE)
+    assert_equal(len(matches), 2, "Successful reparenttest runs")
+
+run_tests()
