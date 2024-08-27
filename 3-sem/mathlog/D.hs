@@ -217,6 +217,18 @@ buildBinopProof (Binary And a b) c (pa, True) (pb, True) = (
         True
     )
  
+buildBinopProof (Binary And a b) c _ (pb, False) = (
+        (SingleP IIMplP ((a |-& b) |--> _l_) c 
+            (BinaryP EImplP _l_ ((a |-& b):c) 
+                (addContext (a |-& b) pb)
+                (SingleP ErAndP b ((a |-& b):c) 
+                    (AxP (a |-& b) ((a |-& b):c))
+                )
+            )
+        ),
+        False
+    )
+
 buildBinopProof (Binary And a b) c (pa, False) _ = (
         (SingleP IIMplP ((a |-& b) |--> _l_) c 
             (BinaryP EImplP _l_ ((a |-& b):c) 
@@ -229,17 +241,6 @@ buildBinopProof (Binary And a b) c (pa, False) _ = (
         False
     )
  
-buildBinopProof (Binary And a b) c _ (pb, False) = (
-        (SingleP IIMplP ((a |-& b) |--> _l_) c 
-            (BinaryP EImplP _l_ ((a |-& b):c) 
-                (addContext (a |-& b) pb)
-                (SingleP ErAndP b ((a |-& b):c) 
-                    (AxP (a |-& b) ((a |-& b):c))
-                )
-            )
-        ),
-        False
-    )
  
 buildBinopProof (Binary Or a b) c (pa, True) _ = (
         (SingleP IlOrP (a |-| b) c pa),
