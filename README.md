@@ -12,3 +12,5 @@
 2) Math Logic
 3) algorithms
 4) discrete math
+### 4 semester
+1) discrete math
