@@ -15,3 +15,5 @@
 ### 4 semester
 1) discrete math
 2) probability theory
+3) optimization methods
+
