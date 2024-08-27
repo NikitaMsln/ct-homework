@@ -14,3 +14,4 @@
 4) discrete math
 ### 4 semester
 1) discrete math
+2) probability theory
