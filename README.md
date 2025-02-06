@@ -20,3 +20,4 @@
 5) type theory
 ### 5 semester
 1) functional programming
+2) assembler
