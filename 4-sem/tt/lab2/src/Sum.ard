@@ -1,0 +1,60 @@
+\import Arith.Nat
+\import Logic
+\import Paths
+\import Algebra.Monoid
+\import Algebra.Monoid.Prime
+\import Order.LinearOrder
+
+\func sum (n : Nat) (f : Nat -> Nat) : Nat \elim n
+    | 0 => f 0
+    | suc n => sum n f + f (suc n)
+
+\func sum-first-take (n : Nat) (f : Nat -> Nat) : sum (suc n) f = sum n (\lam x => f (suc x)) + f 0 \elim n
+    | 0 => NatSemiring.+-comm {f 0} {f 1}
+    | suc n => 
+        pmap (\lam x => x + f (suc (suc n))) (sum-first-take n f) *>
+        NatSemiring.+-assoc {sum n (\lam x => f (suc x))} {f 0} {f (suc (suc n))} *>
+        pmap (\lam x => sum n (\lam y => f (suc y)) + x) (NatSemiring.+-comm {f 0} {f (suc (suc n))}) *>
+        inv (NatSemiring.+-assoc {sum n (\lam x => f (suc x))} {f (suc (suc n))} {f 0})
+
+\func sum-distr (c n : Nat) (f : Nat -> Nat) : c * sum n f = sum n (\lam x => c * f x) \elim n
+    | 0 => idp
+    | suc n => 
+        NatSemiring.ldistr {c} {sum n f} {f (suc n)} *>
+        pmap (\lam x => x + c * f (suc n)) (sum-distr c n f)
+
+\func sum-merge (n : Nat) (f g : Nat -> Nat) : sum n f + sum n g = sum n (\lam i => f i + g i) \elim n
+    | 0 => idp
+    | suc n => NatSemiring.+-assoc {sum n f} {f (suc n)} {sum n g + g (suc n)} *>
+        pmap (\lam t => sum n f + t) (
+            inv (NatSemiring.+-assoc {f (suc n)} {sum n g} {g (suc n)}) *>
+            pmap (\lam t => t + g (suc n)) (NatSemiring.+-comm {f (suc n)} {sum n g}) *>
+            NatSemiring.+-assoc {sum n g} {f (suc n)} {g (suc n)}
+        ) *>
+        inv (NatSemiring.+-assoc {sum n f} {sum n g} {f (suc n) + g (suc n)}) *>
+        pmap (\lam t => t + (f (suc n) + g (suc n))) (sum-merge n f g)
+
+
+\open LinearOrder
+
+\func a<=a (a : Nat) : a <= a \elim a
+    | 0 => zero<=_
+    | suc a => suc<=suc (a<=a a)
+
+\func a<=suca (a : Nat) : a <= suc a \elim a
+    | 0 => zero<=_
+    | suc a => suc<=suc (a<=suca a)
+
+\func sum-pred {P : Nat -> \Type}
+    (n : Nat)
+    (f : Nat -> Nat)
+    (ad : \Pi (x y : Nat) -> P x -> P y -> P (x + y))
+    (ff : \Pi (x : Nat) -> x <= n -> P (f x)) : P (sum n f) \elim n, ad, ff
+        | 0, ad, ff => ff 0 (zero<=_ {0})
+        | suc n, ad, ff => ad (sum n f) (f (suc n)) (sum-pred n f ad (\lam (x : Nat) (y : x <= n) => ff x (LinearOrder.<=-transitive y (a<=suca n)))) (ff (suc n) (a<=a (suc n)))
+
+\func sumf=sumg (n : Nat) (f g : Nat -> Nat) (eq : \Pi (i : Nat) -> (i <= n) -> (f i = g i)) : sum n f = sum n g \elim n
+    | 0 => eq 0 (zero<=_ {0})
+    | suc n =>
+        pmap (\lam x => x + f (suc n)) (sumf=sumg n f g (\lam (x : Nat) (y : x <= n) => eq x (LinearOrder.<=-transitive y (a<=suca n)))) *>
+        pmap (\lam x => sum n g + x) (eq (suc n) (a<=a (suc n)))

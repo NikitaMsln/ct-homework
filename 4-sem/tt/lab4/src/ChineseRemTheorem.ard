@@ -1,0 +1,331 @@
+\import Arith.Nat
+\import Logic
+\import Data.Or
+\import Paths
+\import Algebra.Monoid
+\import Algebra.Monoid.Prime
+\import Order.LinearOrder
+\import Order.PartialOrder \hiding (<=)
+\import Order.StrictOrder
+\import FixedLenList
+\import Prime
+
+\open Nat(mod, div)
+
+\open LinearOrder(<=, <_<=, notLess, Dec)
+
+\open Monoid(LDiv)
+
+\open Preorder(=_<=)
+
+\func a=bmod {a b : Nat} (e : a = (suc b)) : a mod (suc b) = {Nat} 0 => pmap (\lam t => t mod (suc b)) e *> (nmodn=0 : (suc b) mod (suc b) = {Nat} 0)
+
+\data EuclideanDec (a b : Nat) \with
+    | suc (suc a), suc (suc b) => aless (a' b' : Nat) (suc (suc a) < suc (suc b)) (suc (suc a) = a') (a' + b' = suc (suc b)) (EuclideanDec a' b')
+    | suc (suc a), suc (suc b) => agreat (a' b' : Nat) (suc (suc b) < suc (suc a)) (suc (suc b) = b') (b' + a' = suc (suc a)) (EuclideanDec a' b')
+    | 1, suc b => aone
+    | suc a, 1 => bone
+
+\func a-'0=a {a : Nat} : a -' 0 = a \elim a
+    | 0 => idp
+    | suc a => idp
+
+\func euclidean-dec (a b c : Nat) (nza : 0 < a) (nzb : 0 < b) (cnt : c = a + b)
+    (coprime : (\Pi (x : Nat) -> (a mod (suc x) = {Nat} 0) -> (b mod (suc x) = {Nat} 0) -> x = 0))
+    : EuclideanDec a b \elim a, b, c
+        | 0, _, _ => \case notLess (=_<= idp) nza \with {}
+        | _, 0, _ => \case notLess (=_<= idp) nzb \with {}
+        | 1, suc b, _ => aone
+        | suc a, 1, _ => bone
+        | suc (suc a), suc (suc b), suc c => \case Dec.trichotomy (suc (suc a)) (suc (suc b)) \with {
+            | equals a=b => \case suc/=0 (coprime (suc a) (nmodn=0 {suc a}) (a=bmod (inv a=b))) \with {}
+            | less (NatSemiring.suc<suc a<b) => aless (suc (suc a)) (b -' a) (NatSemiring.suc<suc a<b) idp (<=_exists (<_<= (NatSemiring.suc<suc a<b))) (euclidean-dec-left (suc (suc a)) (suc b) (suc a) c nza a<b suc/=0 (pmap pred cnt) (next-val-coprime (NatSemiring.suc<suc a<b) coprime))
+            | greater (NatSemiring.suc<suc b<a) => agreat (a -' b) (suc (suc b)) (NatSemiring.suc<suc b<a) idp (<=_exists (<_<= (NatSemiring.suc<suc b<a))) (euclidean-dec-right (suc a) (suc (suc b)) (suc b) c b<a nzb suc/=0 (pmap pred (cnt *> NatSemiring.+-comm {suc (suc a)} {suc (suc b)})) (\lam t x y => next-val-coprime (NatSemiring.suc<suc b<a) (\lam w f g => coprime w g f) t y x))
+        }
+    \where {
+        \func euclidean-dec-left (a b p c : Nat) (nza : 0 < a) (nzb : p < b) (nzp : p = 0 -> Empty) (cnt : c = a + b)
+            (coprime : (\Pi (x : Nat) -> (a mod (suc x) = {Nat} 0) -> ((b -' p) mod (suc x) = {Nat} 0) -> x = 0))
+            : EuclideanDec a (b -' p) \elim b, p, c, nzb
+                | 0, p, _, ()
+                | b, 0, _, nzb => \case nzp idp \with {}
+                | suc b, 1, suc c, NatSemiring.suc<suc nzb => euclidean-dec-eqv-b (euclidean-dec a b c nza nzb (pmap pred cnt) (\lam x ax bx => coprime x ax (pmap (\lam t => t mod (suc x)) (a-'0=a {b}) *> bx)))
+                | suc b, suc (suc p), suc c, NatSemiring.suc<suc nzb => euclidean-dec-left a b (suc p) c nza nzb suc/=0 (pmap pred cnt) coprime
+            
+        \func euclidean-dec-eqv-b {a b : Nat} (ed : EuclideanDec a b) : EuclideanDec a (b -' 0) \elim b, ed
+            | 0, ()
+            | suc b, ed => ed
+        
+        \func euclidean-dec-right (a b p c : Nat) (nza : p < a) (nzb : 0 < b) (nzp : p = 0 -> Empty) (cnt : c = b + a)
+            (coprime : (\Pi (x : Nat) -> ((a -' p) mod (suc x) = {Nat} 0) -> (b mod (suc x) = {Nat} 0) -> x = 0))
+            : EuclideanDec (a -' p) b \elim a, p, c, nza
+                | 0, p, _, ()
+                | a, 0, _, nza => \case nzp idp \with {}
+                | suc a, 1, suc c, NatSemiring.suc<suc nza => euclidean-dec-eqv-a (euclidean-dec a b c nza nzb (pmap pred cnt *> NatSemiring.+-comm {b} {a}) (\lam x ax bx => coprime x (pmap (\lam t => t mod (suc x)) (a-'0=a {a}) *> ax) bx))
+                | suc a, suc (suc p), suc c, NatSemiring.suc<suc nza => euclidean-dec-right a b (suc p) c nza nzb suc/=0 (pmap pred cnt) coprime
+            
+        \func euclidean-dec-eqv-a {a b : Nat} (ed : EuclideanDec a b) : EuclideanDec (a -' 0) b \elim a, ed
+            | 0, ()
+            | suc b, ed => ed
+
+        \func next-val-coprime {a b : Nat} (l : a + 2 < b + 2)
+            (coprime : (\Pi (x : Nat) -> ((a + 2) mod (suc x) = {Nat} 0) -> ((b + 2) mod (suc x) = {Nat} 0) -> x = 0))
+            (y : Nat) (da : (a + 2) mod (suc y) = {Nat} 0) (ds : (b -' a) mod (suc y) = {Nat} 0) : y = {Nat} 0 =>
+            coprime y da (mod-unique (mod<right {b + 2} {suc y} (suc/=0 {y})) (nonZero>0 suc/=0) (
+                Nat.divModProp (b + 2) (suc y) *>
+                inv (<=_exists (<_<= l)) *> 
+                pmap (\lam t => (a + 2) + t) (
+                    inv (Nat.divModProp (b -' a) (suc y)) *>
+                    pmap (\lam t => (suc y) * ((b -' a) div (suc y)) + t) ds
+                ) *>
+                pmap (\lam t => t + (suc y) * ((b -' a) div (suc y))) (
+                    inv (Nat.divModProp (a + 2) (suc y)) *>
+                    pmap (\lam t => (suc y) * ((a + 2) div (suc y)) + t) da
+                ) *>
+                inv (NatSemiring.ldistr {suc y} {(a + 2) div (suc y)} {(b -' a) div (suc y)})
+            ) : (b + 2) mod (suc y) = {Nat} 0)
+    }
+
+\func euclidean-decomp (a b : Nat) (nza : 0 < a) (nzb : 0 < b)
+    (coprime : (\Pi (x : Nat) -> (a mod (suc x) = {Nat} 0) -> (b mod (suc x) = {Nat} 0) -> x = 0))
+    : \Sigma (c d : Nat) (a * c = b * d + 1) => euclidean-dec-decomp (euclidean-dec a b (a + b) nza nzb idp coprime)
+    \where {
+        \func euclidean-dec-decomp {a b : Nat} (ed : EuclideanDec a b) : \Sigma (c d : Nat) (a * c = b * d + 1) \elim a, b, ed
+            | 1, suc b, aone => (suc (suc b), 1, NatSemiring.*-comm {1} {suc (suc b)})
+            | suc a, 1, bone => (1, a, pmap suc (NatSemiring.*-comm {a} {1}))
+            | suc (suc a), suc (suc b), (aless a' b' a<b a=a' a'+b'=b eda'b') => \case euclidean-dec-decomp eda'b' \with {
+                | (c, d, a'c=b'd+1) => (c + d, d, 
+                    pmap (\lam t => t * (c + d)) a=a' *>
+                    NatSemiring.ldistr {a'} {c} {d} *>
+                    pmap (\lam t => t + a' * d) a'c=b'd+1 *>
+                    NatSemiring.+-comm {b' * d + 1} {a' * d} *>
+                    inv (NatSemiring.+-assoc {a' * d} {b' * d} {1}) *>
+                    pmap suc (
+                        inv (NatSemiring.rdistr {a'} {b'} {d}) *>
+                        pmap (\lam t => t * d) a'+b'=b
+                    )
+                )
+            }
+            | suc (suc a), suc (suc b), (agreat a' b' b<a b=b' b'+a'=a eda'b') => \case euclidean-dec-decomp eda'b' \with {
+                | (c, d, a'c=b'd+1) => (c, c + d, 
+                    pmap (\lam t => t * c) (inv b'+a'=a) *>
+                    NatSemiring.rdistr {b'} {a'} {c} *>
+                    pmap (\lam t => b' * c + t) a'c=b'd+1 *>
+                    inv (NatSemiring.+-assoc {b' * c} {b' * d} {1}) *>
+                    pmap suc (
+                        inv (NatSemiring.ldistr {b'} {c} {d}) *>
+                        pmap (\lam t => t * (c + d)) (inv b=b')
+                    )
+                )
+            }
+    }
+
+\func prod-reduce {n : Nat} (u : FixedLenList Nat n) : Nat \elim n, u
+    | 0, nil-fll => 1
+    | suc n, next-fll h u => (prod-reduce u) * h
+
+\func sum-list {n : Nat} (a : FixedLenList Nat n) : Nat \elim n, a
+    | 0, nil-fll => 0
+    | suc n, next-fll h a => (sum-list a) + h
+
+\func prod-notzero {a b : Nat} (nza : a = 0 -> Empty) (nzb : b = 0 -> Empty) (abz : a * b = 0) : Empty \elim a, b
+    | 0, _ => \case nza idp \with {}
+    | _, 0 => \case nzb idp \with {}
+    | suc a, suc b => suc/=0 {(suc a) * b + a} abz
+
+\func prod-reduce-notzero {n : Nat} (u : FixedLenList Nat n) (nz : \Pi (i : Fin n) -> (get u i = 0) -> Empty)
+    (z : prod-reduce u = 0) : Empty \elim n, u
+    | 0, nil-fll => suc/=0 z
+    | suc n, next-fll h u => prod-notzero (prod-reduce-notzero u (\lam i => nz (suc i))) (nz 0) z
+
+\func prod-reduce-coprime {n : Nat} (u : FixedLenList Nat n) (p : Nat)
+    (coprime : \Pi (i : Fin n) (x : Nat) -> (p mod (suc x) = {Nat} 0) -> ((get u i) mod (suc x) = {Nat} 0) -> x = 0)
+    (x : Nat) (dp : p mod (suc x) = {Nat} 0) (du : (prod-reduce u) mod (suc x) = {Nat} 0) : x = 0 \elim n, u, x
+    | _, _, 0 => idp
+    | 0, nil-fll, suc x => \case suc/=0 (inv (mod_< (NatSemiring.suc<suc (NatSemiring.zero<suc))) *> du) \with {}
+    | suc n, next-fll h u, x => *-coprime (prod-reduce-coprime u p (\lam i => coprime (suc i))) (coprime 0) x dp du
+
+\lemma a*bmoda=0 {a b : Nat} : (a * b) mod a = {Nat} 0 => div_mod (LDiv.product-left a 1 b (ldiv-1))
+    \where {
+        \func ldiv-1 {a : Nat} : LDiv 1 a => mod_div idp
+    }
+
+\lemma sum-mod-right {a b c : Nat} (nz : c = 0 -> Empty) (da : a mod c = {Nat} 0) : (a + b) mod c = {Nat} b mod c =>
+    mod-unique (mod<right nz) (mod<right nz) (
+        Nat.divModProp (a + b) c *>
+        pmap (\lam t => a + t) (inv (Nat.divModProp b c)) *>
+        pmap (\lam t => t + (c * (b div c) + (b mod c))) (
+            inv (Nat.divModProp a c) *>
+            pmap (\lam t => c * (a div c) + t) da
+        ) *>
+        inv (NatSemiring.+-assoc {c * (a div c)} {c * (b div c)} {b mod c}) *>
+        pmap (\lam t => t + (b mod c)) (inv (NatSemiring.ldistr {c} {a div c} {b div c}))
+    )
+
+\lemma prod-div-left {a b c : Nat} (e : a mod c = {Nat} 0) : ((a * b) mod c = {Nat} 0) => div_mod (LDiv.trans (mod_div e) (mod_div (a*bmoda=0 {a} {b})))
+
+\func prod-reduce-div {n : Nat} (u : FixedLenList Nat n) (i : Fin n) : (prod-reduce u) mod (get u i) = {Nat} 0 \elim n, u, i
+    | suc n, next-fll h u, 0 => pmap (\lam t => t mod h) (NatSemiring.*-comm {prod-reduce u} {h}) *> a*bmoda=0 {h} {prod-reduce u}
+    | suc n, next-fll h u, suc i => prod-div-left {prod-reduce u} {h} {get u i} (prod-reduce-div u i)
+
+\func prod-coprime {n : Nat} (u : FixedLenList Nat n) (nz : \Pi (i : Fin n) -> (get u i = 0) -> Empty)
+    (u-coprime : \Pi (i j : Fin n) (x : Nat) -> ((get u i) mod (suc (suc x)) = {Nat} 0) -> ((get u j) mod (suc (suc x)) = {Nat} 0) -> i = {Nat} j)
+    : \Sigma (pu : FixedLenList Nat n)
+        (\Pi (i : Fin n) -> (get pu i = 0) -> Empty)
+        (\Pi (i : Fin n) (x : Nat) -> ((get pu i) mod (suc x) = {Nat} 0) -> ((get u i) mod (suc x) = {Nat} 0) -> x = 0)
+        (\Pi (i j : Fin n) -> (i = {Nat} j -> Empty) -> ((get pu i) mod (get u j) = {Nat} 0)) \elim n, u
+        | 0, nil-fll => (nil-fll, (\lam (i : Fin 0) => \case i \with {}), (\lam (i : Fin 0) => \case i \with {}), (\lam (i : Fin 0) => \case i \with {}))
+        | suc n, next-fll h u => \case (prod-coprime u (\lam i => nz (suc i)) (\lam i j x a b => pmap pred (u-coprime (suc i) (suc j) x a b))) \with {
+            (pu, nzpu, pu-coprime-s, pu-div) => (
+                next-fll (prod-reduce u) (map (\lam t => t * h) pu),
+                (not-zero-next h u pu nz nzpu),
+                (next-prod-coprime h u pu u-coprime pu-coprime-s),
+                (next-div-diff-elems h u pu pu-div)
+            )
+        }
+    \where {
+        \func not-zero-next {n : Nat} (h : Nat) (u pu : FixedLenList Nat n)
+            (nzu : \Pi (i : Fin (suc n)) -> (get (next-fll h u) i = 0) -> Empty)
+            (nzpu : \Pi (i : Fin n) -> (get pu i = 0) -> Empty)
+            (i : Fin (suc n)) (z : get (next-fll (prod-reduce u) (map (\lam t => t * h) pu)) i = 0) : Empty \elim i
+                | 0 => prod-reduce-notzero u (\lam j => nzu (suc j)) z
+                | suc i => prod-notzero (nzpu i) (nzu 0) (inv (map-change (\lam t => t * h) pu i) *> z)
+
+        \func next-div-diff-elems {n : Nat} (h : Nat) (u pu : FixedLenList Nat n)
+            (pu-div : \Pi (i j : Fin n) -> (i = {Nat} j -> Empty) -> ((get pu i) mod (get u j) = {Nat} 0))
+            (i j : Fin (suc n)) (ne : i = {Nat} j -> Empty)
+            : (get (next-fll (prod-reduce u) (map (\lam t => t * h) pu)) i) mod (get (next-fll h u) j) = {Nat} 0 \elim i, j
+                | 0, 0 => \case ne idp \with {}
+                | suc i, 0 => pmap (\lam t => t mod h) ((map-change (\lam t => t * h) pu i) *> (NatSemiring.*-comm {get pu i} {h})) *> a*bmoda=0 {h} {get pu i}
+                | 0, suc j => prod-reduce-div u j
+                | suc i, suc j =>
+                    pmap (\lam t => t mod (get u j)) (map-change (\lam t => t * h) pu i) *>
+                    prod-div-left {get pu i} {h} {get u j} (pu-div i j (\lam e => ne (pmap suc e)))
+
+        \func list-coprime-to-coprime {n : Nat} (u : FixedLenList Nat n)
+            (u-coprime : \Pi (i j : Fin n) (x : Nat) -> ((get u i) mod (suc (suc x)) = {Nat} 0) -> ((get u j) mod (suc (suc x)) = {Nat} 0) -> i = {Nat} j)
+            (i j : Fin n) (ne : i = {Nat} j -> Empty)
+            (x : Nat)
+            (ndi : (get u i) mod (suc x) = {Nat} 0) (ndj : (get u j) mod (suc x) = {Nat} 0) : x = 0 \elim x
+                | 0 => idp
+                | suc x => \case ne (u-coprime i j x ndi ndj) \with {}
+
+        \func next-prod-coprime {n : Nat} (h : Nat) (u pu : FixedLenList Nat n)
+            (u-coprime : \Pi (i j : Fin (suc n)) (x : Nat) -> ((get (next-fll h u) i) mod (suc (suc x)) = {Nat} 0) -> ((get (next-fll h u) j) mod (suc (suc x)) = {Nat} 0) -> i = {Nat} j)
+            (pu-coprime-s : \Pi (i : Fin n) (x : Nat) -> ((get pu i) mod (suc x) = {Nat} 0) -> ((get u i) mod (suc x) = {Nat} 0) -> x = 0)
+            (i : Fin (suc n)) (x : Nat)
+            (dpu : (get (next-fll (prod-reduce u) (map (\lam t => t * h) pu)) i) mod (suc x) = {Nat} 0)
+            (du : (get (next-fll h u) i) mod (suc x) = {Nat} 0) : x = 0 \elim i
+                | 0 => prod-reduce-coprime u h (prod-reduce-coprime-to-first h u u-coprime) x du dpu
+                | suc i => *-coprime-first
+                    (pu-coprime-s i)
+                    (list-coprime-to-coprime (next-fll h u) u-coprime 0 (suc i) (\lam e => suc/=0 {i} (inv e)))
+                    x
+                    (pmap (\lam t => (t mod (suc x) : Nat)) (inv (map-change (\lam t => (t * h)) pu i)) *> dpu)
+                    du
+
+        \func prod-reduce-coprime-to-first {n : Nat} (h : Nat) (u : FixedLenList Nat n)
+            (u-coprime : \Pi (i j : Fin (suc n)) (x : Nat) -> ((get (next-fll h u) i) mod (suc (suc x)) = {Nat} 0) -> ((get (next-fll h u) j) mod (suc (suc x)) = {Nat} 0) -> i = {Nat} j)
+            (i : Fin n) (x : Nat) (eh : h mod (suc x) = {Nat} 0) (eu : (get u i) mod (suc x) = {Nat} 0) : x = 0 \elim x
+            | 0 => idp
+            | suc x => \case suc/=0 (u-coprime (suc i) 0 x eu eh) \with {}
+    }
+
+\func prod-list {n : Nat} (a b : FixedLenList Nat n) : FixedLenList Nat n \elim n, a, b
+    | 0, nil-fll, nil-fll => nil-fll
+    | suc n, next-fll ah at, next-fll bh bt => next-fll (ah * bh) (prod-list at bt)
+        
+\func prod-list-get {n : Nat} (a b : FixedLenList Nat n) (i : Fin n) : get (prod-list a b) i = (get a i) * (get b i) \elim n, a, b, i
+    | suc n, next-fll ah at, next-fll bh bt, 0 => idp
+    | suc n, next-fll ah at, next-fll bh bt, suc i => prod-list-get at bt i
+
+\func prod-list-elements-div {n : Nat} (a b c : FixedLenList Nat n)
+    (dac : \Pi (i j : Fin n) -> (i = {Nat} j -> Empty) -> ((get a i) mod (get c j) = {Nat} 0))
+    (i j : Fin n) (ne : i = {Nat} j -> Empty) : (get (prod-list a b) i) mod (get c j) = {Nat} 0 =>
+    pmap (\lam t => t mod (get c j)) (prod-list-get a b i) *> prod-div-left {get a i} {get b i} {get c j} (dac i j ne)
+
+\func prod-coprime-mod1 {n : Nat} (u : FixedLenList Nat n)
+    (nz : \Pi (i : Fin n) -> (get u i = 0) -> Empty)
+    (u-coprime : \Pi (i j : Fin n) (x : Nat) -> ((get u i) mod (suc (suc x)) = {Nat} 0) -> ((get u j) mod (suc (suc x)) = {Nat} 0) -> i = {Nat} j)
+    : \Sigma (pu : FixedLenList Nat n)
+        (\Pi (i : Fin n) -> \Sigma (m : Nat) (get pu i = (get u i) * m + 1))
+        (\Pi (i j : Fin n) -> (i = {Nat} j -> Empty) -> ((get pu i) mod (get u j) = 0)) => \case prod-coprime u nz u-coprime \with {
+            (pu, nzpu, pu-cop, pu-div) => find-list u pu nz nzpu pu-cop pu-div
+        }
+    \where {
+        \func find-list-coef {n : Nat} (u pu : FixedLenList Nat n)
+            (nzu : \Pi (i : Fin n) -> (get u i = 0) -> Empty) (nzpu : \Pi (i : Fin n) -> (get pu i = 0) -> Empty)
+            (copr : \Pi (i : Fin n) (x : Nat) -> ((get pu i) mod (suc x) = {Nat} 0) -> ((get u i) mod (suc x) = {Nat} 0) -> x = 0)
+            : \Sigma (a : FixedLenList Nat n) (\Pi (i : Fin n) -> \Sigma (m : Nat) ((get pu i) * (get a i) = (get u i) * m + 1)) \elim n, u, pu
+            | 0, nil-fll, nil-fll => (nil-fll, (\lam (i : Fin 0) => \case i \with {}))
+            | suc n, next-fll uh u, next-fll puh pu => \case euclidean-decomp puh uh (nonZero>0 (nzpu 0)) (nonZero>0 (nzu 0)) (copr 0),
+                find-list-coef u pu (\lam i => nzu (suc i)) (\lam i => nzpu (suc i)) (\lam i => copr (suc i)) \with {
+                | (mpu, mu, e), (a, g) => (
+                    next-fll mpu a,
+                    next-a-prop uh mu puh mpu u pu a e g
+                )
+            }
+        
+        \func next-a-prop {n : Nat} (uh mu puh mpu : Nat) (u pu a : FixedLenList Nat n)
+            (e : puh * mpu = uh * mu + 1)
+            (ap : \Pi (i : Fin n) -> \Sigma (m : Nat) ((get pu i) * (get a i) = (get u i) * m + 1))
+            (i : Fin (suc n)) : \Sigma (m : Nat) ((get (next-fll puh pu) i) * (get (next-fll mpu a) i) = (get (next-fll uh u) i) * m + 1) \elim i
+                | 0 => (mu, e)
+                | suc i => ap i
+        
+        \func find-list {n : Nat} (u pu : FixedLenList Nat n)
+            (nzu : \Pi (i : Fin n) -> (get u i = 0) -> Empty) (nzpu : \Pi (i : Fin n) -> (get pu i = 0) -> Empty)
+            (copr : \Pi (i : Fin n) (x : Nat) -> ((get pu i) mod (suc x) = {Nat} 0) -> ((get u i) mod (suc x) = {Nat} 0) -> x = 0)
+            (div : \Pi (i j : Fin n) -> (i = {Nat} j -> Empty) -> ((get pu i) mod (get u j) = {Nat} 0))
+            : \Sigma (pu : FixedLenList Nat n)
+                (\Pi (i : Fin n) -> \Sigma (m : Nat) (get pu i = (get u i) * m + 1))
+                (\Pi (i j : Fin n) -> (i = {Nat} j -> Empty) -> ((get pu i) mod (get u j) = 0)) => \case find-list-coef u pu nzu nzpu copr \with {
+                    | (a, da) => (
+                        prod-list pu a,
+                        (\lam (i : Fin n) => ((da i).1, prod-list-get pu a i *> (da i).2)),
+                        prod-list-elements-div pu a u div
+                    )
+                }
+    }
+
+\func chinese-reminder-theorem {n : Nat} (a : FixedLenList Nat n) (u : FixedLenList Nat n)
+    (a-less : \Pi (i : Fin n) -> get a i < get u i)
+    (u-coprime : \Pi (i j : Fin n) (x : Nat) -> ((get u i) mod (suc (suc x)) = {Nat} 0) -> ((get u j) mod (suc (suc x)) = {Nat} 0) -> i = {Nat} j)
+    : \Sigma (x : Nat) (\Pi (i : Fin n) -> x Nat.mod (get u i) = get a i) => \case prod-coprime-mod1 u (\lam (i : Fin n) => greater-notzero (a-less i)) u-coprime \with {
+        | (pu, pumod, pudiv) => (sum-list (prod-list pu a), (
+            \lam (i : Fin n) => sum-list-mod (prod-list pu a) (get u i) (get a i) (greater-notzero (a-less i)) i
+                (\lam (j : Fin n) (ne : j = {Nat} i -> Empty) => prod-list-elements-div pu a u pudiv j i ne)
+                (
+                    pmap (\lam t => t mod (get u i)) (
+                        prod-list-get pu a i *>
+                        pmap (\lam t => t * (get a i)) (pumod i).2 *>
+                        NatSemiring.rdistr {(get u i) * ((pumod i).1)} {1} {get a i} *>
+                        pmap (\lam t => (get u i) * ((pumod i).1) * (get a i) + t) (NatSemiring.*-comm {1} {get a i})*>
+                        pmap (\lam t => t + (get a i)) (NatSemiring.*-assoc {get u i} {(pumod i).1} {get a i})
+                    ) *>
+                    sum-mod-right {(get u i) * (((pumod i).1) * (get a i))} {get a i} {get u i} (greater-notzero (a-less i)) (
+                        prod-div-left {get u i} {((pumod i).1) * (get a i)} {get u i} (nmodn=0n> {get u i} (nonZero>0 (greater-notzero (a-less i))))
+                    ) *>
+                    mod_< {get a i} {get u i} (a-less i)
+                )
+        ))
+    }
+    \where {
+        \func sum-mod-left {b a c : Nat} (nz : c = 0 -> Empty) (da : a mod c = {Nat} 0) : (b + a) mod c = {Nat} b mod c =>
+            pmap (\lam t => t mod c) (NatSemiring.+-comm {b} {a}) *> sum-mod-right nz da
+
+        \func sum-list-div {n : Nat} (a : FixedLenList Nat n) (u : Nat) (nz : u = 0 -> Empty)
+            (div : \Pi (i : Fin n) -> ((get a i) mod u = {Nat} 0)) : (sum-list a) mod u = {Nat} 0 \elim n, a, u
+                | _, _, 0 => \case nz idp \with {}
+                | 0, nil-fll, suc u => mod_< {0} {suc u} (NatSemiring.zero<suc)
+                | suc n, next-fll h a, suc u  => sum-mod-right nz (sum-list-div a (suc u) nz (\lam i => div (suc i))) *> (div 0)
+        
+        \func sum-list-mod {n : Nat} (a : FixedLenList Nat n) (u r : Nat) (nz : u = 0 -> Empty) (j : Fin n)
+            (divp : \Pi (i : Fin n) -> (i = {Nat} j -> Empty) -> ((get a i) mod u = {Nat} 0))
+            (modp : (get a j) mod u = {Nat} r) : (sum-list a) mod u = {Nat} r \elim n, a, j
+                | suc n, next-fll h a, 0 => sum-mod-right nz (sum-list-div a u nz (\lam (i : Fin n) => divp (suc i) (suc/=0))) *> modp
+                | suc n, next-fll h a, suc j => sum-mod-left nz (divp 0 (\lam e => suc/=0 (inv e))) *> sum-list-mod a u r nz j (\lam i ne => divp (suc i) (\lam e => ne (pmap pred e))) modp
+
+        \func greater-notzero {a b : Nat} (g : a < b) (z : b = 0) : Empty \elim a, b, g
+            | 0, suc b, NatSemiring.zero<suc => suc/=0 z
+            | suc a, suc b, NatSemiring.suc<suc g => suc/=0 z
+    }

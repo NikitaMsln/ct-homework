@@ -1,0 +1,142 @@
+\import Arith.Nat
+\import Logic
+\import Paths
+\import Algebra.Monoid
+\import Order.LinearOrder
+
+\import PascalNumbers
+\import Sum
+
+\func c_a_b=c_b_a (a b : Nat) : c_a_b a b = c_a_b b a =>
+    pmap (\lam x => fact (a + b) Nat.div x) (NatSemiring.*-comm {fact a} {fact b}) *>
+    pmap (\lam x => fact x Nat.div (fact b * fact a)) (NatSemiring.+-comm {a} {b})
+
+\func c_a_0=1 (a : Nat) : c_a_b a 0 = 1 => self-div=1 {fact a} (fact/=0 {a})
+
+\func binom-elem (a b i k : Nat) : Nat => (c_a_b i k) * ((Monoid.pow a i) * (Monoid.pow b k))
+
+\func binom-elem-eq-left (a b n : Nat) : binom-elem a b n 0 = Monoid.pow a n =>
+    pmap (\lam x => x * Monoid.pow a n) (c_a_0=1 n) *>
+    NatSemiring.*-comm {1} {Monoid.pow a n}
+
+\func binom-elem-eq-right (a b n : Nat) : binom-elem a b 0 n = Monoid.pow b n =>
+    pmap (\lam x => x * (1 * Monoid.pow b n)) (c_a_b=c_b_a 0 n *> c_a_0=1 n) *>
+    NatSemiring.*-comm {1} {1 * Monoid.pow b n} *>
+    NatSemiring.*-comm {1} {Monoid.pow b n}
+
+\func -'suc-inv (a b : Nat) (l : b LinearOrder.<= a) : suc (a -' b) = (suc a) -' b \elim a, b
+    | 0, 0 => idp
+    | suc a, 0 => idp
+    | 0, suc b => \case LinearOrder.notLess l (nonZero>0 {suc b} suc/=0) \with {}
+    | suc a, suc b => -'suc-inv a b (suc<=suc.conv l)
+
+\func newton-binom-decompos (a b n : Nat) : Monoid.pow (a + b) n = sum n (\lam i => binom-elem a b i (n -' i)) \elim n
+    | 0 => idp
+    | 1 => 
+        NatSemiring.ldistr {1} {a} {b} *>
+        pmap (\lam x => x + (1 * b)) (inv (binom-elem-eq-left a b 1)) *>
+        pmap (\lam x => binom-elem a b 1 0 + x) (inv (binom-elem-eq-right a b 1)) *>
+        NatSemiring.+-comm {binom-elem a b 1 0} {binom-elem a b 0 1}
+    | suc (suc n) =>
+        pmap (\lam x => x * (a + b)) (newton-binom-decompos a b (suc n)) *>
+        NatSemiring.ldistr {sum (suc n) (\lam i => binom-elem a b i ((suc n) -' i))} {a} {b} *>
+        pmap (\lam x => x + sum (suc n) (\lam i => binom-elem a b i ((suc n) -' i)) * b) (
+            NatSemiring.*-comm {sum (suc n) (\lam i => binom-elem a b i ((suc n) -' i))} {a} *>
+            sum-distr a (suc n) (\lam i => binom-elem a b i ((suc n) -' i)) *>
+            sumf=sumg (suc n) (\lam i => a * binom-elem a b i ((suc n) -' i)) (\lam i => c_a_b i ((suc n) -' i) * ((Monoid.pow a (suc i)) * Monoid.pow b ((suc n) -' i))) (
+                \lam (i : Nat) (l : i LinearOrder.<= (suc n)) =>
+                    inv (NatSemiring.*-assoc {a} {c_a_b i ((suc n) -' i)} {Monoid.pow a i * Monoid.pow b ((suc n) -' i)}) *>
+                    pmap (\lam x => x * (Monoid.pow a i * Monoid.pow b ((suc n) -' i))) (NatSemiring.*-comm {a} {c_a_b i ((suc n) -' i)}) *>
+                    NatSemiring.*-assoc {c_a_b i ((suc n) -' i)} {a} {Monoid.pow a i * Monoid.pow b ((suc n) -' i)} *>
+                    pmap (\lam x => c_a_b i ((suc n) -' i) * x) (
+                        inv (NatSemiring.*-assoc {a} {Monoid.pow a i} {Monoid.pow b ((suc n) -' i)}) *>
+                        pmap (\lam x => x * Monoid.pow b ((suc n) -' i)) (NatSemiring.*-comm {a} {Monoid.pow a i})
+                    )
+            ) *>
+            pmap (\lam x => sum n (\lam i => c_a_b i ((suc n) -' i) * (Monoid.pow a (suc i) * Monoid.pow b ((suc n) -' i))) + x) (
+                pmap (\lam x => c_a_b (suc n) (n -' n) * (Monoid.pow a (n + 2) * Monoid.pow b x)) (-'id {n}) *>
+                pmap (\lam x => x * Monoid.pow a (suc (suc n))) (
+                    pmap (\lam x => c_a_b (suc n) x) (-'id {n}) *>
+                    c_a_0=1 (suc n)
+                ) *>
+                NatSemiring.*-comm {1} {Monoid.pow a (n + 2)}
+            )
+        ) *> 
+        pmap (\lam x => (sum n (\lam i => c_a_b i ((suc n) -' i) * (Monoid.pow a (suc i) * Monoid.pow b ((suc n) -' i))) + Monoid.pow a (n + 2) + x)) (
+            NatSemiring.*-comm {sum (suc n) (\lam i => binom-elem a b i ((suc n) -' i))} {b} *>
+            sum-distr b (suc n) (\lam i => binom-elem a b i ((suc n) -' i)) *>
+            sumf=sumg (suc n) (\lam i => b * binom-elem a b i ((suc n) -' i)) (\lam i => c_a_b i ((suc n) -' i) * (Monoid.pow a i * Monoid.pow b (suc (suc n) -' i))) (
+                \lam (i : Nat) (l : i LinearOrder.<= (suc n)) =>
+                    NatSemiring.*-comm {b} {c_a_b i ((suc n) -' i) * (Monoid.pow a i * Monoid.pow b ((suc n) -' i))} *>
+                    NatSemiring.*-assoc {c_a_b i ((suc n) -' i)} {Monoid.pow a i * Monoid.pow b ((suc n) -' i)} {b} *>
+                    pmap (\lam x => c_a_b i ((suc n) -' i) * x) (
+                        NatSemiring.*-assoc {Monoid.pow a i} {Monoid.pow b ((suc n) -' i)} {b} *>
+                        pmap (\lam x => Monoid.pow a i * Monoid.pow b x) (-'suc-inv (suc n) i l)
+                    )
+            ) *>
+            sum-first-take n (\lam i => c_a_b i (suc n -' i) * (Monoid.pow a i * Monoid.pow b (suc (suc n) -' i))) *>
+            pmap (\lam x => sum n (\lam i => c_a_b (suc i) (suc n -' suc i) * (Monoid.pow a (suc i) * Monoid.pow b (suc (suc n) -' (suc i)))) + x) (
+                pmap (\lam x => c_a_b 0 (n + 1) * x) (NatSemiring.*-comm {1} {Monoid.pow b (n + 2)}) *>
+                pmap (\lam x => x * Monoid.pow b (n + 2)) (c_a_b=c_b_a 0 (n + 1) *> c_a_0=1 (n + 1)) *>
+                NatSemiring.*-comm {1} {Monoid.pow b (n + 2)}
+            )
+        ) *>
+        replace-sum
+            (sum n (\lam i => c_a_b i ((suc n) -' i) * (Monoid.pow a (suc i) * Monoid.pow b ((suc n) -' i))))
+            (Monoid.pow a (n + 2))
+            (sum n (\lam i => c_a_b (suc i) (suc n -' suc i) * (Monoid.pow a (suc i) * Monoid.pow b (suc (suc n) -' (suc i)))))
+            (Monoid.pow b (n + 2)) *>
+        pmap (\lam x => x + Monoid.pow b (n + 2) + Monoid.pow a (n + 2)) (
+            sum-merge n (\lam i => c_a_b i ((suc n) -' i) * (Monoid.pow a (suc i) * Monoid.pow b ((suc n) -' i)))
+                (\lam i => c_a_b (suc i) (suc n -' suc i) * (Monoid.pow a (suc i) * Monoid.pow b (suc (suc n) -' (suc i)))) *>
+            sumf=sumg n
+                (\lam i => c_a_b i ((suc n) -' i) * (Monoid.pow a (suc i) * Monoid.pow b ((suc n) -' i)) +
+                    c_a_b (suc i) (n -' i) * (Monoid.pow a (suc i) * Monoid.pow b (suc n -' i)))
+                (\lam i => c_a_b (suc i) (suc (suc n) -' suc i) * (Monoid.pow a (suc i) * Monoid.pow b (suc n -' i)))
+                (\lam (i : Nat) (l : i LinearOrder.<= n) =>
+                    rdistr (c_a_b i ((suc n) -' i)) (c_a_b (suc i) (n -' i)) (Monoid.pow a (suc i) * Monoid.pow b (suc n -' i)) *>
+                    pmap (\lam x => x * (Monoid.pow a (suc i) * Monoid.pow b (suc n -' i))) (
+                        pmap (\lam x => c_a_b i x + c_a_b (suc i) (n -' i)) (inv (-'suc-inv n i l)) *>
+                        NatSemiring.+-comm {c_a_b i (suc (n -' i))} {c_a_b (suc i) (n -' i)} *>
+                        inv (c_a_b-recursive i (n -' i)) *>
+                        pmap (\lam x => c_a_b (suc i) x) (-'suc-inv n i l)
+                    )
+                )
+        ) *>
+        pmap (\lam x => x + Monoid.pow a (n + 2)) (
+            pmap (\lam x => sum n (\lam i => c_a_b (suc i) (suc n -' i) * (Monoid.pow a (suc i) * Monoid.pow b (suc n -' i))) + x) (
+                NatSemiring.*-comm {Monoid.pow b (n + 2)} {1} *>
+                pmap (\lam x => 1 * x) (NatSemiring.*-comm {Monoid.pow b (n + 2)} {1}) *>
+                pmap (\lam x => x * (Monoid.pow a 0 * Monoid.pow b (n + 2))) (
+                    inv (c_a_b=c_b_a 0 (n + 2) *> c_a_0=1 (n + 2))
+                )
+            ) *>
+            inv (sum-first-take 
+                n
+                (\lam i => c_a_b i (suc (suc n) -' i) * (Monoid.pow a i * Monoid.pow b (suc (suc n) -' i)))
+            )
+        ) *>
+        pmap (\lam x => sum (n + 1) (\lam i => c_a_b i (suc (suc n) -' i) * (Monoid.pow a i * Monoid.pow b (suc (suc n) -' i))) + x) (
+            NatSemiring.*-comm {Monoid.pow a (n + 2)} {1} *>
+            pmap (\lam x => 1 * (Monoid.pow a (n + 2) * Monoid.pow b x)) (inv (-'id {n + 2})) *>
+            pmap (\lam x => x * (Monoid.pow a (n + 2) * Monoid.pow b (n -' n))) (
+                inv (c_a_0=1 (n + 2)) *>
+                pmap (\lam x => c_a_b (n + 2) x) (inv (-'id {n + 2}))
+            )
+        )
+    \where {
+        \func replace-sum (a b c d : Nat) : (a + b) + (c + d) = a + c + d + b =>
+            inv (NatSemiring.+-assoc {a + b} {c} {d}) *>
+            pmap (\lam x => x + d) (NatSemiring.+-assoc {a} {b} {c}) *>
+            pmap (\lam x => a + x + d) (NatSemiring.+-comm {b} {c}) *>
+            pmap (\lam x => x + d) (inv (NatSemiring.+-assoc {a} {c} {b})) *>
+            NatSemiring.+-assoc {a + c} {b} {d} *>
+            pmap (\lam x => (a + c) + x) (NatSemiring.+-comm {b} {d}) *>
+            inv (NatSemiring.+-assoc {a + c} {d} {b})
+        
+        \func rdistr (a b c : Nat) : a * c + b * c = (a + b) * c =>
+            pmap (\lam x => x + b * c) (NatSemiring.*-comm {a} {c}) *>
+            pmap (\lam x => c * a + x) (NatSemiring.*-comm {b} {c}) *>
+            inv (NatSemiring.ldistr {c} {a} {b}) *>
+            NatSemiring.*-comm {c} {a + b}
+    }

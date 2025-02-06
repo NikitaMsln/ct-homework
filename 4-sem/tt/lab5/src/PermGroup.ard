@@ -1,0 +1,151 @@
+\import Algebra.Group
+\import Paths
+\import Arith.Fin
+\import Arith.Nat
+\import Data.Fin
+\import Data.Or
+\import Logic
+\import Perm
+
+\instance PermGroup (n : Nat) : Group (Perm n) {
+    | ide => perm (all-fin-list n).1 (all-fin-list n).2
+    | * => perm-comb
+    | ide-left => perm-ide-left
+    | ide-right => perm-ide-right
+    | *-assoc => perm-*-assoc
+    | inverse => inverse-perm
+    | inverse-left => perm-inverse-left
+    | inverse-right => perm-inverse-right
+} \where {
+    \func perm-comb {n : Nat} (a b : Perm n) : Perm n =>
+        perm 
+            (map (get (get-list b)) (get-list a))
+            (map-inj (get (get-list b)) (get-list a) (get-uniq-prop b) (get-uniq-prop a))
+
+    \func perm-ide-list-id {n : Nat} (i : Fin n) : get (all-fin-list n).1 i = i \elim n, i
+        | suc n, (0 : Fin n) => idp
+        | suc n, suc i => inv (map-change fsuc (all-fin-list n).1 i) *> pmap fsuc (perm-ide-list-id {n} i)
+    
+    \func map-combine {A B C : \Type} (f : A -> B) (g : B -> C) {n : Nat} (l : FixedSizeList A n)
+        : map g (map f l) = map (\lam x => g (f x)) l \elim n, l
+        | 0, nil-fsl => idp
+        | suc n, next-fsl h l => pmap (\lam x => next-fsl (g (f (h))) x) (map-combine f g l)
+    
+    \func map-get-ide {n : Nat} {A : \Type} (l : FixedSizeList A n) : map (get l) (all-fin-list n).1 = l \elim n, l
+        | 0, nil-fsl => idp
+        | suc n, next-fsl h l => pmap (\lam x => next-fsl h x) (map-combine fsuc (get (next-fsl h l)) (all-fin-list n).1 *> map-get-ide l)
+    
+    \func perm-ide-left {n : Nat} {a : Perm n} : perm-comb (perm (all-fin-list n).1 (all-fin-list n).2) a = a =>
+        perm-eq (perm-comb (perm (all-fin-list n).1 (all-fin-list n).2) a) a (map-get-ide (get-list a))
+    
+    \func by-elem-list-eq {n : Nat} {A : \Type} (a b : FixedSizeList A n) (eq : \Pi (i : Fin n) -> (get a i = get b i)) : a = b \elim n, a, b
+        | 0, nil-fsl, nil-fsl => idp
+        | suc n, next-fsl ah at, next-fsl bh bt => pmap (\lam t => next-fsl t at) (eq 0) *> pmap (\lam t => next-fsl bh t) (by-elem-list-eq at bt (\lam i => eq (suc i)))
+
+    \func perm-ide-right {n : Nat} {a : Perm n} : perm-comb a (perm (all-fin-list n).1 (all-fin-list n).2) = a =>
+        perm-eq (perm-comb a (perm (all-fin-list n).1 (all-fin-list n).2)) a (
+            by-elem-list-eq (map (get (all-fin-list n).1) (get-list a)) (get-list a) (\lam (i : Fin n) =>
+                inv (map-change (get (all-fin-list n).1) (get-list a) i) *> perm-ide-list-id (get (get-list a) i)
+            )
+        )
+    
+    \func map-f-eq {n : Nat} {A B : \Type} (f g : A -> B) (eq : \Pi (a : A) -> f a = g a) (l : FixedSizeList A n) : map f l = map g l =>
+        by-elem-list-eq (map f l) (map g l) (
+            \lam (i : Fin n) =>
+                inv (map-change f l i) *>
+                eq (get l i) *>
+                map-change g l i
+        )
+
+    \func perm-*-assoc {n : Nat} {a b c : Perm n} : perm-comb (perm-comb a b) c = perm-comb a (perm-comb b c) =>
+        perm-eq (perm-comb (perm-comb a b) c) (perm-comb a (perm-comb b c)) (
+            map-combine (get (get-list b)) (get (get-list c)) (get-list a) *>
+            map-f-eq (\lam i => get (get-list c) (get (get-list b) i)) (\lam i => get (map (get (get-list c)) (get-list b)) i) (
+                \lam i => map-change (get (get-list c)) (get-list b) i
+            ) (get-list a)
+        )
+    
+    \func swap-zero {n : Nat} (a b : Fin n) : Fin n \elim n, a, b
+        | suc n, a, 0 => a
+        | suc n, a, suc b => choice a (suc b) (fin-det a (suc b))
+        \where {
+            \func choice {n : Nat} (x y : Fin (suc n)) (c : Or (y = x) (y = x -> Empty)) : Fin (suc n) \elim c
+                | inl _ => (0 : Fin (suc n))
+                | inr _ => y
+
+            \func choice-eq {n : Nat} (x y : Fin (suc n)) (eyx : y = x) (c : Or (y = x) (y = x -> Empty)) : choice x y c = 0 \elim c
+                | inl e => idp {Fin (suc n)} {0}
+                | inr ne => \case ne eyx \with {}
+                
+            \func choice-neq {n : Nat} (x y : Fin (suc n)) (neyx : y = x -> Empty) (c : Or (y = x) (y = x -> Empty)) : choice x y c = y \elim c
+                | inl e => \case neyx e \with {}
+                | inr ne => idp {Fin (suc n)} {y}
+        }
+    
+    \func swap-zero-inj {n : Nat} (a x y : Fin n) (e : swap-zero a x = swap-zero a y) : x = y \elim n, a, x, y
+        | suc n, a, 0, 0 => idp
+        | suc n, a, suc x, 0 => \case fin-det a (suc x) \with {
+            | inl ex => \case suc/=0 (ex *> (inv (inv (swap-zero.choice-eq a (suc x) ex (fin-det a (suc x))) *> e))) \with {}
+            | inr nex => \case nex (inv (swap-zero.choice-neq a (suc x) nex (fin-det a (suc x))) *> e) \with {}
+        }
+        | suc n, a, 0, suc y => \case fin-det a (suc y) \with {
+            | inl ey => \case suc/=0 (ey *> e *> swap-zero.choice-eq a (suc y) ey (fin-det a (suc y))) \with {}
+            | inr ney => \case ney (inv (swap-zero.choice-neq a (suc y) ney (fin-det a (suc y))) *> (inv e)) \with {}
+        }
+        | suc n, a, suc x, suc y => \case fin-det a (suc x), fin-det a (suc y) \with {
+            | inl ex, inl ey => ex *> (inv ey)
+            | inr nex, inl ey => \case suc/=0 (inv (swap-zero.choice-neq a (suc x) nex (fin-det a (suc x))) *> e *> swap-zero.choice-eq a (suc y) ey (fin-det a (suc y))) \with {}
+            | inl ex, inr ney => \case suc/=0 (inv (inv (swap-zero.choice-eq a (suc x) ex (fin-det a (suc x))) *> e *> swap-zero.choice-neq a (suc y) ney (fin-det a (suc y)))) \with {}
+            | inr nex, inr ney => inv (swap-zero.choice-neq a (suc x) nex (fin-det a (suc x))) *> e *> swap-zero.choice-neq a (suc y) ney (fin-det a (suc y))
+        }
+    
+    \func zero-ret {n : Nat} {a b : Fin (suc n)} (e : swap-zero a b = 0) : b = a \elim n, a, b
+        | n, 0, 0 => idp
+        | n, suc a, 0 => \case suc/=0 e \with {}
+        | n, a, suc b => \case fin-det a (suc b) \with {
+            | inl eq => eq
+            | inr neq => \case suc/=0 (inv (swap-zero.choice-neq a (suc b) neq (fin-det a (suc b))) *> e) \with {}
+        }
+
+    \func perm-allin {n : Nat} (p : Perm n) (a : Fin n) : \Sigma (i : Fin n) (get (get-list p) i = a) \elim n, a
+        | suc n, a =>
+        (
+            (zero-in-perm (perm (map (swap-zero a) (get-list p)) (map-inj (swap-zero a) (get-list p) (swap-zero-inj a) (get-uniq-prop p)))).1,
+            zero-ret (
+                map-change (swap-zero a) (get-list p) (zero-in-perm (perm (map (swap-zero a) (get-list p)) (map-inj (swap-zero a) (get-list p) (swap-zero-inj a) (get-uniq-prop p)))).1 *>
+                (zero-in-perm (perm (map (swap-zero a) (get-list p)) (map-inj (swap-zero a) (get-list p) (swap-zero-inj a) (get-uniq-prop p)))).2
+            )
+        )
+    
+    \func inverse-perm {n : Nat} (p : Perm n) : Perm n =>
+        perm (map (\lam i => (perm-allin p i).1) (all-fin-list n).1) (map-inj
+            (\lam i => (perm-allin p i).1)
+            (all-fin-list n).1
+            (\lam (i j : Fin n) (e : (perm-allin p i).1 = (perm-allin p j).1) =>
+                inv (perm-allin p i).2 *> pmap (\lam t => get (get-list p) t) e *> (perm-allin p j).2
+            )
+            (all-fin-list n).2
+        )
+
+    \func perm-inverse-left {n : Nat} {x : Perm n} : perm-comb (inverse-perm x) x = perm (all-fin-list n).1 (all-fin-list n).2 =>
+        perm-eq (perm-comb (inverse-perm x) x) (perm (all-fin-list n).1 (all-fin-list n).2) (
+            map-combine (\lam i => (perm-allin x i).1) (get (get-list x)) (all-fin-list n).1 *>
+            by-elem-list-eq (map (\lam i => get (get-list x) (perm-allin x i).1) (all-fin-list n).1) (all-fin-list n).1 (
+                \lam (i : Fin n) =>
+                    inv (map-change (\lam j => get (get-list x) (perm-allin x j).1) (all-fin-list n).1 i) *>
+                    (perm-allin x (get (all-fin-list n).1 i)).2
+            )
+        )
+
+    \func perm-inverse-right {n : Nat} {x : Perm n} : perm-comb x (inverse-perm x) = perm (all-fin-list n).1 (all-fin-list n).2 =>
+        perm-eq (perm-comb x (inverse-perm x)) (perm (all-fin-list n).1 (all-fin-list n).2) (
+            by-elem-list-eq (map (get (map (\lam i => (perm-allin x i).1) (all-fin-list n).1)) (get-list x)) (all-fin-list n).1 (
+                \lam (j : Fin n) =>
+                    inv (map-change (get (map (\lam i => (perm-allin x i).1) (all-fin-list n).1)) (get-list x) j) *>
+                    inv (map-change (\lam i => (perm-allin x i).1) (all-fin-list n).1 (get (get-list x) j)) *>
+                    pmap (\lam t => (perm-allin x t).1) (perm-ide-list-id (get (get-list x) j)) *>
+                    (get-uniq-prop x (perm-allin x (get (get-list x) j)).1 j (perm-allin x (get (get-list x) j)).2) *>
+                    inv (perm-ide-list-id j)
+            )
+        )
+}

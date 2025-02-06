@@ -1,0 +1,109 @@
+\import Arith.Nat
+\import Arith.Prime \hiding (isPrime)
+\import Algebra.Monoid
+\import Algebra.Monoid.Prime
+\import Set
+\import Logic
+\import Data.Or
+\import Paths
+\import Order.LinearOrder
+\import Order.PartialOrder \hiding (<=)
+\import Order.StrictOrder
+
+\open Nat(mod, div)
+
+\open LinearOrder(<=, <_<=, notLess, <=-dec)
+
+\open Monoid(LDiv)
+
+\open Preorder(=_<=)
+
+\func prime/=0 {c : Nat} (p : Prime c) (e : c = 0) : Empty \elim c
+    | 0 => suc/=0 {0} (inv (p.isCancelable-left {0} {1} idp))
+    | suc c => suc/=0 {c} e
+
+\func prime>1 {p : Nat} (pp : Prime p) : 1 < p \elim p
+    | 0 => \case pp.isCancelable-left {0} {1} idp
+    | 1 => absurd (pp.notInv Monoid.Inv.ide-isInv)
+    | suc (suc a) => NatSemiring.suc<suc NatSemiring.zero<suc
+
+\lemma nmodn=0 {n : Nat} : (suc n) mod (suc n) = {Nat} 0 =>
+    mod-unique {suc n} {(suc n) div (suc n)} {(suc n) mod (suc n)} {1} {0} (mod<right {suc n} {suc n} (suc/=0 {n})) (nonZero>0 suc/=0) (Nat.divModProp (suc n) (suc n))
+
+\lemma nmodn=0n> {n : Nat} (l : 0 < n) : n mod n = {Nat} 0 \elim n, l
+    | suc n, NatSemiring.zero<suc => nmodn=0 {n}
+
+\func div-less2 {n k : Nat} (nl : 1 < n) (l : k < 2) (d : LDiv k n) : k = 1 \elim n, k, nl, l, d
+    | 1, _, NatSemiring.suc<suc (), _, _
+    | _, suc (suc k), _, NatSemiring.suc<suc (NatSemiring.suc<suc ()), _
+    | suc (suc n), 0, NatSemiring.suc<suc NatSemiring.zero<suc, NatSemiring.zero<suc, d : LDiv => \case *-comm *> d.inv-right
+    | _, 1, _, NatSemiring.suc<suc NatSemiring.zero<suc, _ => idp
+
+\func get-prime-d {n : Nat} (l : 1 < n) : \Sigma (p : Nat) (Prime p) (n mod p = 0) \elim n, l
+    | 1, NatSemiring.suc<suc ()
+    | suc (suc n), (NatSemiring.suc<suc NatSemiring.zero<suc) =>
+        get-prime-d-acc (suc (suc n)) 2 n (NatSemiring.+-comm {n} {2}) (NatSemiring.suc<suc NatSemiring.zero<suc)
+            (\lam {k : Nat} (lk : k < 2) (d : LDiv k (suc (suc n))) => div-less2 (NatSemiring.suc<suc NatSemiring.zero<suc) lk d)
+    \where {
+        \func not-div-greater {n a : Nat} (dn : n mod a = 0) (ndn : \Pi {k : Nat} -> k < a -> LDiv k n -> k = 1) 
+            {k : Nat} (l : k < a) (da : LDiv k a) : k = 1 =>
+            ndn {k} l (LDiv.trans da (mod_div dn))
+        
+        \func not-div-upd {n a : Nat} (dn : n mod a = 0 -> Empty) (ndn : \Pi {k : Nat} -> k < a -> LDiv k n -> k = 1)
+            {k : Nat} (l : k < suc a) (dk : LDiv k n) : k = 1 => \case (<=-dec (<_suc_<= l)) \with {
+                | inl k<a => ndn {k} k<a dk
+                | inr k=a => \case dn (pmap (\lam t => n mod t) (inv k=a) *> div_mod dk) \with {} 
+            }
+        
+        \func sum-notless {n a c : Nat} (l : a + c <= n) : a <= n \elim c
+            | 0 => l
+            | suc c => sum-notless {n} {a} {c} (NatSemiring.<=-transitive (<_<= id<suc) l) 
+
+        \func get-prime-d-acc (n a c : Nat) (e : n = a + c) (l : 1 < a)
+            (ndl : \Pi {k : Nat} -> k < a -> LDiv k n -> k = 1)
+            : (\Sigma (p : Nat) (Prime p) (n mod p = 0)) \elim c
+            | 0 => (n, prime-less.conv (NatSemiring.<-transitive-left l (=_<= (inv e))) (\lam {k} (k<n) => ndl {k} (NatSemiring.<-transitive-left k<n (=_<= e))), nmodn=0n> (NatSemiring.<-transitive (NatSemiring.zero<suc) (NatSemiring.<-transitive-left l (=_<= (inv e)))))
+            | suc c => \case LinearOrder.Dec.trichotomy (n mod a) 0 \as na \with {
+                | equals e1 => (a, prime-less.conv l (not-div-greater e1 ndl), e1)
+                | greater g => get-prime-d-acc n (suc a) c
+                    (e *> NatSemiring.+-comm {a + c} {1} *> (inv (NatSemiring.+-assoc {1} {a} {c})) *> pmap (\lam t => t + c) (NatSemiring.+-comm {1} {a}))
+                    (NatSemiring.<-transitive l id<suc)
+                    (not-div-upd (\lam (e : n mod a = 0) => notLess (=_<= e) g) ndl)
+                | less l => \case notLess zero<=_ l \with {}
+            }
+    }
+
+\func div2-prime {a b c : Nat} (dab : a mod b = {Nat} 0) (p : Prime c) (dc : (a * b) mod c = {Nat} 0) : a mod c = {Nat} 0 =>
+    \case p.isPrime (mod_div dc) \with {
+        | byLeft c|a => div_mod c|a
+        | byRight c|b => div_mod (LDiv.trans c|b (mod_div dab))
+    }
+
+\func *-coprime-prime-cond {a b : Nat} (coprime-prime : \Pi {x : Nat} -> (Prime x) -> (a mod x = {Nat} 0) -> (b mod x = {Nat} 0) -> Empty)
+    (x : Nat) (ea : a mod (suc x) = {Nat} 0) (eb : b mod (suc x) = {Nat} 0) : x = 0 \elim x
+        | 0 => idp
+        | suc x => \case get-prime-d {suc (suc x)} (NatSemiring.suc<suc NatSemiring.zero<suc) \with {
+            | (p, pr, p|x) => \case coprime-prime {p} pr (div_mod (LDiv.trans (mod_div p|x) (mod_div ea))) (div_mod (LDiv.trans (mod_div p|x) (mod_div eb))) \with {}
+        }
+
+\func *-prime-coprime-cond {a b : Nat} (coprime-prime : \Pi (x : Nat) -> (a mod (suc x) = {Nat} 0) -> (b mod (suc x) = {Nat} 0) -> x = 0)
+    {x : Nat} (p : Prime x) (ea : a mod x = {Nat} 0) (eb : b mod x = {Nat} 0) : Empty \elim x
+        | 0 => suc/=0 (inv (p.isCancelable-left {0} {1} idp))
+        | 1 => p.notInv Monoid.Inv.ide-isInv
+        | suc (suc x) => suc/=0 (coprime-prime (suc x) ea eb)
+
+\func *-coprime {a b c : Nat} (copb : \Pi (x : Nat) -> (a mod (suc x) = {Nat} 0) -> (b mod (suc x) = {Nat} 0) -> x = 0)
+    (copc : \Pi (x : Nat) -> (a mod (suc x) = {Nat} 0) -> (c mod (suc x) = {Nat} 0) -> x = 0)
+    (x : Nat) (da : a mod (suc x) = {Nat} 0) (dbc : (b * c) mod (suc x) = {Nat} 0) : x = 0 \elim x
+        | 0 => idp
+        | suc x => \case get-prime-d {suc (suc x)} (NatSemiring.suc<suc NatSemiring.zero<suc) \with {
+            | (p : Nat, pr : Prime p, p|x) => \case pr.isPrime (LDiv.trans (mod_div p|x) (mod_div dbc)) \with {
+                | byLeft p|b => \case *-prime-coprime-cond copb pr (div_mod (LDiv.trans (mod_div p|x) (mod_div da))) (div_mod p|b) \with {}
+                | byRight p|c => \case *-prime-coprime-cond copc pr (div_mod (LDiv.trans (mod_div p|x) (mod_div da))) (div_mod p|c) \with {}
+            }
+        }
+
+\func *-coprime-first {a b c : Nat} (copa : \Pi (x : Nat) -> (a mod (suc x) = {Nat} 0) -> (b mod (suc x) = {Nat} 0) -> x = 0)
+    (copc : \Pi (x : Nat) -> (c mod (suc x) = {Nat} 0) -> (b mod (suc x) = {Nat} 0) -> x = 0)
+    : \Pi (x : Nat) -> ((a * c) mod (suc x) = {Nat} 0) -> (b mod (suc x) = {Nat} 0) -> x = 0 =>
+        \lam x dac db => *-coprime (\lam y db1 da => copa y da db1) (\lam y db1 dc => copc y dc db1) x db dac

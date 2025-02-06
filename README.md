@@ -17,3 +17,6 @@
 2) probability theory
 3) optimization methods
 4) java advanced
+5) type theory
+### 5 semester
+1) functional programming

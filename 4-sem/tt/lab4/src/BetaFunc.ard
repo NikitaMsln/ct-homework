@@ -1,0 +1,201 @@
+\import Paths
+\import Logic
+\import Arith.Nat
+\import Algebra.Monoid
+\import Algebra.Monoid.Prime
+\import Data.Or
+\import Order.LinearOrder
+\import Order.PartialOrder \hiding (<=)
+\import Order.StrictOrder
+\import FixedLenList
+\import Prime
+\import ChineseRemTheorem
+
+\open Nat(mod, div)
+
+\open LinearOrder(<=, <_<=, notLess, Dec)
+
+\open Monoid(LDiv)
+
+\open Preorder(=_<=)
+
+\func fact (n : Nat) : Nat \elim n
+    | 0 => 1
+    | suc n => (fact n) * (suc n)
+
+\func fact-notzero {n : Nat} (e : fact n = 0) : Empty \elim n
+    | 0 => suc/=0 e
+    | suc n => prod-notzero (fact-notzero {n}) (suc/=0 {n}) e
+
+\func facta-div-a {a : Nat} (nz : 0 < a) : (fact a) mod a = 0 \elim a, nz
+    | suc a, NatSemiring.zero<suc => pmap (\lam t => t mod (suc a)) (NatSemiring.*-comm {fact a} {suc a}) *> prod-div-left {suc a} {fact a} {suc a} (a=bmod {suc a} {a} idp)
+
+\func fact-div {a b : Nat} (nl : b <= a) (nz : 0 < b) : (fact a) mod b = {Nat} 0 =>
+    pmap (\lam t => (fact a) mod t) (inv (sub-sub-eq nl)) *> sub-fact-div {a} {a -' b} (sub0more nz nl)
+    \where {
+        \func sub0more {a b : Nat} (l : 0 < b) (nl : b <= a) : a -' b < a \elim a, b, l
+            | 0, suc b, NatSemiring.zero<suc => \case notLess nl (NatSemiring.zero<suc) \with {}
+            | suc a, suc b, NatSemiring.zero<suc => NatSemiring.<-transitive-right (-'<=id) (id<suc {a})
+
+        \func sub-fact-div {a b : Nat} (l : b < a) : (fact a) mod (a -' b) = {Nat} 0 \elim a, b, l
+            | a, 0, l => pmap (\lam t => (fact a) mod t) (a-'0=a {a}) *> facta-div-a l
+            | suc a, suc b, NatSemiring.suc<suc l => prod-div-left {fact a} {suc a} {a -' b} (sub-fact-div l)
+        
+        \func suc-sub {a b : Nat} (nl : b <= a) : (suc a) -' b = suc (a -' b) \elim a, b
+            | 0, 0 => idp
+            | suc a, 0 => idp
+            | 0, suc b => \case notLess nl (NatSemiring.zero<suc) \with {}
+            | suc a, suc b => suc-sub {a} {b} (suc<=suc.conv nl)
+
+        \func sub-sub-eq {a b : Nat} (nl : b <= a) : a -' (a -' b) = b \elim a, b
+            | 0, 0 => idp
+            | suc a, 0 => -'id {suc a}
+            | 0, suc b => \case notLess nl (NatSemiring.zero<suc) \with {}
+            | suc a, suc b => suc-sub {a} {a -' b} (-'<=id) *> pmap suc (sub-sub-eq {a} {b} (suc<=suc.conv nl))
+    }
+
+\func coprime-beta-func-denom {a n : Nat} (nza : a = 0 -> Empty) (i j : Fin n) {x : Nat} (p : Prime x)
+    (im : ((i + 1) * (a * (fact n)) + 1) mod x = {Nat} 0) (jm : ((j + 1) * (a * (fact n)) + 1) mod x = {Nat} 0)
+    : i = {Nat} j => \case prime-div nza i j p im jm \with {
+        | inl e => e
+        | inr dv => \case suc/=0 (inv (sum-mod-right {(i + 1) * (a * (fact n))} {1} {x} (prime/=0 p) (pmap (\lam t => t mod x) (NatSemiring.*-comm {i + 1} {a * (fact n)}) *> prod-div-left {a * (fact n)} {i + 1} {x} dv) *> mod_< (prime>1 p)) *> im) \with {}
+    }
+    \where {
+        \lemma sub-div {a b c : Nat} (l : a < b) (nz : c = 0 -> Empty) (ma : a mod c = {Nat} 0) (mb : b mod c = {Nat} 0) : (b -' a) mod c = {Nat} 0 =>
+            mod-unique {c} {(a div c) + ((b -' a) div c)} {(b -' a) mod c} {b div c} {b mod c} (mod<right nz) (mod<right nz) (
+                pmap (\lam t => t + ((b -' a) mod c)) (NatSemiring.ldistr {c} {a div c} {(b -' a) div c}) *>
+                NatSemiring.+-assoc {c * (a div c)} {c * ((b -' a) div c)} {(b -' a) mod c} *>
+                pmap (\lam t => t + (c * ((b -' a) div c) + (b -' a) mod c)) (
+                    pmap (\lam t => c * (a div c) + t) (inv ma) *>
+                    Nat.divModProp a c
+                ) *>
+                pmap (\lam t => a + t) (Nat.divModProp (b -' a) c) *>
+                <=_exists (<_<= l) *>
+                inv (Nat.divModProp b c)
+            ) *> mb
+        
+        \func -'ldistr (a b c : Nat) : a * (b -' c) = a * b -' a * c \elim b, c
+            | 0, 0 => idp
+            | 0, suc c => idp
+            | suc b, 0 => inv (a-'0=a {a * suc b})
+            | suc b, suc c => -'ldistr a b c *> inv (suc-distr-' a b c)
+            \where {
+                \func up-suc-left {a b : Nat} : suc a + b = suc (a + b) =>
+                    (NatSemiring.+-comm {suc a} {b} ) *> idp *> pmap suc (NatSemiring.+-comm {b} {a})
+
+                \func -'-'-assoc (a b c : Nat) : a -' b -' c = a -' (b + c) \elim a, b, c
+                    | 0, _, _ => idp
+                    | suc a, 0, 0 => idp
+                    | suc a, suc b, 0 => a-'0=a {a -' b}
+                    | suc a, 0, suc c => pmap (\lam x => a -' x) (NatSemiring.+-comm {c} {0})
+                    | suc a, suc b, suc c => -'-'-assoc a b (suc c) *> pmap (\lam x => a -' x) (inv up-suc-left)
+                
+                \func -'+-assoc {a b c : Nat} (l : c <= b) : (a + b) -' c = a + (b -' c) \elim a, b, c
+                    | 0, 0, 0 => idp
+                    | suc a, 0, 0 => idp
+                    | a, suc b, 0 => idp
+                    | a, suc b, suc c => -'+-assoc {a} {b} {c} (suc<=suc.conv {c} {b} l)
+                    | a, 0, suc c => \case notLess l (nonZero>0 {suc c} (suc/=0 {c})) \with {}
+
+                \func suc-distr-' (a b c : Nat) : a * (suc b) -' a * (suc c) = a * b -' a * c =>
+                    pmap (\lam x => x -' a * (suc c)) (NatSemiring.ldistr {a} {b} {1}) *>
+                    pmap (\lam x => (a * b + a) -' x) (NatSemiring.ldistr {a} {c} {1} *> NatSemiring.+-comm {a * c} {a}) *>
+                    inv (-'-'-assoc (a * b + a) a (a * c)) *>
+                    pmap (\lam x => x -' a * c) (-'+-assoc {a * b} {a} {a} (=_<= idp) *> pmap (\lam x => a * b + x) (-'id {a}))
+            }
+        
+        \func -'rdistr (a b c : Nat) : (a -' b) * c = a * c -' b * c =>
+            NatSemiring.*-comm {a -' b} {c} *>
+            -'ldistr c a b *>
+            pmap (\lam t => t -' c * b) (NatSemiring.*-comm {c} {a}) *>
+            pmap (\lam t => a * c -' t) (NatSemiring.*-comm {c} {b})
+
+        \func prime-div {a n : Nat} (nza : a = 0 -> Empty) (i j : Fin n) {x : Nat} (p : Prime x)
+        (im : ((i + 1) * (a * (fact n)) + 1) mod x = {Nat} 0) (jm : ((j + 1) * (a * (fact n)) + 1) mod x = {Nat} 0)
+        : Or (i = {Nat} j) ((a * (fact n)) mod x = {Nat} 0) => \case Dec.trichotomy i j \with {
+            | equals e => inl e
+            | less i<j => inr (prime-div-less-denom nza i j i<j p im jm)
+            | greater j<i => inr (prime-div-less-denom nza j i j<i p jm im)
+        }
+
+        \func sub>0 {a b : Nat} (l : b < a) : 0 < a -' b \elim a, b, l
+            | suc a, 0, NatSemiring.zero<suc => NatSemiring.zero<suc
+            | suc a, suc b, NatSemiring.suc<suc l => sub>0 l
+
+        \func prime-div-less-denom {a n : Nat} (nza : a = 0 -> Empty) (i j : Fin n) (l : (i : Nat) < (j : Nat)) {x : Nat} (p : Prime x)
+        (im : ((i + 1) * (a * (fact n)) + 1) mod x = {Nat} 0) (jm : ((j + 1) * (a * (fact n)) + 1) mod x = {Nat} 0)
+        : (a * (fact n)) mod x = {Nat} 0 =>
+            (div2-prime
+                (
+                    pmap (\lam t => t mod (j -' i)) (NatSemiring.*-comm {a} {fact n}) *>
+                    prod-div-left {fact n} {a} {j -' i} (fact-div {n} {j -' i} (NatSemiring.<=-transitive (-'<=id {j} {i}) (<_<= (fin_< {n} j))) (sub>0 l))
+                )
+                p
+                (
+                    (pmap (\lam t => t mod x) (NatSemiring.*-comm {(a * (fact n))} {(j -' i)} *> -'rdistr (j + 1) (i + 1) (a * (fact n)))) *>
+                    (sub-div
+                        (NatSemiring.suc<suc (NatSemiring.<_*_positive-left (NatSemiring.suc<suc l) (nonZero>0 (prod-notzero nza (fact-notzero {n})))))
+                        (prime/=0 p)
+                        im
+                        jm
+                    )
+                )
+            )
+    }
+
+\func beta-func (b c : Nat) {n : Nat} (i : Fin n) : Nat => b mod ((i + 1) * c + 1)
+
+\func beta-func-of-seq {n : Nat} (a : FixedLenList Nat n) : \Sigma (b c : Nat) (a = list-from-func (beta-func b c)) =>
+    \case chinese-reminder-theorem
+        a
+        (list-from-func (\lam (i : Fin n) => (i + 1) * ((suc (sum-list a)) * (fact n)) + 1))
+        (\lam i => 
+            NatSemiring.<-transitive-left
+                (NatSemiring.<-transitive
+                    (prod-<-right
+                        (prod-<-left
+                            (NatSemiring.<-transitive-right (sum-list-more a i) (id<suc))
+                            (nonZero>0 fact-notzero)
+                        )
+                        (NatSemiring.zero<suc)
+                    )
+                    (id<suc)
+                )
+                (=_<= (inv (list-from-func-elems (\lam j => (j + 1) * ((suc (sum-list a)) * (fact n)) + 1) i)))
+        )
+        (prime-coprime-cond (list-from-func (\lam (i : Fin n) => (i + 1) * ((suc (sum-list a)) * (fact n)) + 1)) 
+            (\lam ( i j : Fin n) {x : Nat} (p : Prime x)
+                (ei : (get (list-from-func (\lam (t : Fin n) => (t + 1) * ((suc (sum-list a)) * (fact n)) + 1)) i) mod x = {Nat} 0)
+                (ej : (get (list-from-func (\lam (t : Fin n) => (t + 1) * ((suc (sum-list a)) * (fact n)) + 1)) j) mod x = {Nat} 0) =>
+                coprime-beta-func-denom (suc/=0) i j p
+                    (pmap (\lam t => t mod x) (inv (list-from-func-elems (\lam (t : Fin n) => (t + 1) * ((suc (sum-list a)) * (fact n)) + 1) i)) *> ei)
+                    (pmap (\lam t => t mod x) (inv (list-from-func-elems (\lam (t : Fin n) => (t + 1) * ((suc (sum-list a)) * (fact n)) + 1) j)) *> ej)
+            )
+        ) \with {
+            | (x, mx) => (x, ((suc (sum-list a)) * (fact n)), list-eq-by-elem a (list-from-func (beta-func x ((suc (sum-list a)) * (fact n)))) (
+                \lam (i : Fin n) =>
+                    (inv (mx i)) *>
+                    pmap (\lam t => x mod t) (list-from-func-elems (\lam (t : Fin n) => (t + 1) * ((suc (sum-list a)) * (fact n)) + 1) i) *>
+                    inv (list-from-func-elems (beta-func x ((suc (sum-list a)) * (fact n))) i)
+            ))
+        }
+    \where {
+        \func sum-list-more {n : Nat} (a : FixedLenList Nat n) (i : Fin n) : get a i <= sum-list a \elim n, a, i
+            | suc n, next-fll h a, 0 => NatSemiring.<=-transitive (=_<= (NatSemiring.+-comm {h} {0})) (NatSemiring.<=_+ (zero<=_ {sum-list a}) (=_<= idp))
+            | suc n, next-fll h a, suc i => NatSemiring.<=_+ (sum-list-more a i) (zero<=_ {h})
+        
+        \func prod-<-left {a b c : Nat} (l : a < b) (nz : 0 < c) : a < b * c \elim c, nz
+            | 1, NatSemiring.zero<suc => l
+            | suc (suc c), NatSemiring.zero<suc =>  NatSemiring.<=_+-right (prod-<-left l (nonZero>0 suc/=0)) (zero<=_)
+        
+        \func prod-<-right {a b c : Nat} (l : a < b) (nz : 0 < c) : a < c * b =>
+            NatSemiring.<-transitive-left (prod-<-left l nz) (=_<= (NatSemiring.*-comm {b} {c}))
+
+        \func prime-coprime-cond {n : Nat} (a : FixedLenList Nat n)
+            (pr : \Pi (i j : Fin n) {x : Nat} -> (Prime x) -> ((get a i) mod x = {Nat} 0) -> ((get a j) mod x = {Nat} 0) -> i = {Nat} j)
+            (i j : Fin n) (x : Nat) (ei : (get a i) mod (suc (suc x)) = {Nat} 0) (ej : (get a j) mod (suc (suc x)) = {Nat} 0) : i = {Nat} j \elim n, a, i, j
+                | suc n, next-fll h a, 0, 0 => idp
+                | suc n, next-fll h a, suc i, 0 => \case suc/=0 (*-coprime-prime-cond (\lam px ei1 ej1 => suc/=0 (pr (suc i) 0 px ei1 ej1)) (suc x) ei ej) \with {}
+                | suc n, next-fll h a, 0, suc j => \case suc/=0 (*-coprime-prime-cond (\lam px ej1 ei1 => suc/=0 (pr (suc j) 0 px ej1 ei1)) (suc x) ej ei) \with {}
+                | suc n, next-fll h a, suc i, suc j => pmap suc (prime-coprime-cond a (\lam i1 j1 p1 e1 e2 => pmap pred (pr (suc i1) (suc j1) p1 e1 e2)) i j x ei ej)
+    }

@@ -1,0 +1,113 @@
+\import Logic
+\import Paths
+\import Arith.Nat
+\open Nat(+,*)
+
+\data NatGreat (a b : Nat) \with
+  | suc m, 0 => natgreat-zero
+  | suc m, suc n => natgreat-next (NatGreat m n)
+
+\data ConcatNat (n : Nat) | concat (a b : Nat) (p : (a + 2) * (b + 2) = n)
+
+\data PrimeNat (n : Nat) \with
+  | suc (suc n) => prime (ConcatNat (n + 2) -> Empty)
+
+\data Divided (a b : Nat) \with
+  | a, suc b => divided (c : Nat) (suc b * c = a)
+
+\func suc-not-zero {a : Nat} (p : suc a = 0) : Empty \elim a, p
+
+\func great-eq {a b : Nat} (p : a = b) (q : NatGreat a b) : Empty \elim a, b, p, q
+  | suc a, suc b, p, natgreat-next q => great-eq (pmap pred p) q
+
+\func divided-to-concat (a b : Nat) (d : Divided a b) (m1 : NatGreat a b) (m2 : NatGreat b 1) : ConcatNat a
+\elim a, b, d, m1, m2
+  | a, 1, d, m1, m2 => \case m2 \with {
+    | natgreat-next m2 => \case m2 \with {}
+  }
+  | 0, suc (suc b), divided 0 dp, m1, natgreat-next natgreat-zero => \case m1 \with {}
+  | suc a, suc (suc b), divided 0 dp, m1, natgreat-next natgreat-zero => \case (suc-not-zero (inv dp)) \with {}
+  | a, suc (suc b), divided 1 dp, m1, natgreat-next natgreat-zero => \case great-eq (inv dp) m1 \with {}
+  | a, suc (suc b), divided (suc (suc c)) dp, m1, natgreat-next natgreat-zero => concat b c dp
+
+\func sum-eq-inv (a b c : Nat) (p : a + c = b + c) : a = b \elim c
+  | 0 => p
+  | suc c => sum-eq-inv a b c (pmap pred p)
+
+\func sum-div-inv (a b : Nat) (d : Divided (a + b) b) : Divided a b \elim a, b, d
+  | a, suc b, divided 0 p => \case suc-not-zero (inv p) \with {}
+  | a, suc b, divided (suc c) p => divided c (sum-eq-inv (suc b * c) a (suc b) p)
+
+\func odd-prime (a : Nat) (p : PrimeNat a) (m : NatGreat a 2) : \Sigma (b : Nat) (a = b * 2 + 1) \elim a, p, m
+  | 2, prime f, natgreat-next (natgreat-next z) => \case z \with {}
+  | suc (suc (suc a)), p, m => deconstruct-prime (suc (suc (suc a))) (prime-not-div2 (suc (suc (suc a))) p m)
+  \where {
+    \func sum-not-div-inv (a b : Nat) (f : Divided (a + b) b -> Empty) (d : Divided a b) : Empty \elim a, b, d
+      | a, suc b, divided c p => f (divided (suc c) (pmap (\lam x => x + suc b) p))
+
+    \func prime-not-div2 (a : Nat) (p : PrimeNat a) (m : NatGreat a 2) (d : Divided a 2) : Empty \elim a, p, m, d
+      | suc (suc a), prime f, m, d => f (divided-to-concat (suc (suc a)) 2 d m (natgreat-next natgreat-zero))
+
+    \func deconstruct-prime (a : Nat) (f : Divided a 2 -> Empty) : \Sigma (b : Nat) (a = b * 2 + 1) \elim a
+      | 0 => \case f (divided 0 idp) \with {}
+      | 1 => (0, idp)
+      | suc (suc a) => \case deconstruct-prime a (sum-not-div-inv a 2 f) \with {
+        | (b, p) => (suc b, pmap (\lam x => suc (suc x)) p)
+      }
+  }
+
+\func even-to-concat {a b : Nat} (m : NatGreat a 2) (p : a = b * 2) : ConcatNat a \elim a, b, m
+  | 1, _, natgreat-next m => \case m \with {}
+  | 2, _, natgreat-next m => \case m \with {
+    | natgreat-next m => \case m \with {}
+  }
+  | suc (suc (suc a)), 0, _ => \case suc-not-zero p \with {}
+  | suc (suc (suc a)), 1, m => \case great-eq p m \with {}
+  | suc (suc (suc a)), suc (suc b), _ => concat b 0 (inv p)
+
+\func great-suc (a b : Nat) (m : NatGreat a b) : NatGreat (suc a) b \elim a, b, m
+  | suc a, suc b, natgreat-next m => natgreat-next (great-suc a b m)
+  | suc a, 0, natgreat-zero => natgreat-zero
+
+\func great-sum {a b c : Nat} (m : NatGreat a c) : NatGreat (a + b) c \elim a, b, c, m
+  | suc a, 0, _, m => m
+  | suc a, _, 0, natgreat-zero => natgreat-zero
+  | suc a, suc b, suc c, natgreat-next m => natgreat-next (great-sum (great-suc a c m))
+
+\func +-of= {a b c d : Nat} (p : a = c) (q : b = d) : a + b = c + d \elim b, d
+  | suc b, suc d => pmap suc (+-of= {a} {b} {c} {d} p (pmap pred q))
+  | 0, 0 => p
+
+\func sum-concat (a b : Nat) (a1 : PrimeNat a) (b1 : PrimeNat b) (a2 : NatGreat a 2) (b2 : NatGreat b 2) :
+  ConcatNat (a + b) => \case odd-prime a a1 a2 , odd-prime b b1 b2 \with {
+  | (c, ac), (d, bd) => even-to-concat {a + b} {c + d + 1} (great-sum a2) (rearrange {a} {b} {c} {d} (+-of= ac bd))
+}
+  \where {
+    \func +-as (a b c : Nat) : a + b + c = a + (b + c) \elim c
+      | 0 => idp
+      | suc c => pmap suc (+-as a b c)
+
+    \func suc-move (a b : Nat) : suc a + b = a + suc b \elim b
+      | 0 => idp
+      | suc b => pmap suc (suc-move a b)
+
+    \func neutral-0 (a : Nat) : 0 + a = a \elim a
+      | 0 => idp
+      | suc a => pmap suc (neutral-0 a)
+
+    \func +-com (a b : Nat) : a + b = b + a \elim a
+      | 0 => neutral-0 b
+      | suc a => suc-move a b *> pmap suc (+-com a b)
+
+    \func rearrange {a b c d : Nat} (p : a + b = c * 2 + d * 2 + 2) : a + b = (c + d) * 2 + 2 =>
+      p *>
+      pmap (\lam x => x + 2) (+-as c c (d + d)) *>
+      pmap (\lam x => c + x + 2) (inv (+-as c d d)) *>
+      pmap (\lam x => c + (x + d) + 2) (inv (+-com d c)) *>
+      pmap (\lam x => c + x + 2) (+-as d c d) *>
+      pmap (\lam x => x + 2) (inv (+-as c d (c + d)))
+  }
+
+\func sum-not-prime (a b : Nat) (a1 : PrimeNat a) (b1 : PrimeNat b) (a2 : NatGreat a 2) (b2 : NatGreat b 2) (p : PrimeNat (a + b))
+  : Empty \elim a, b, p
+  | a, suc (suc b), prime f => f (sum-concat a (suc (suc b)) a1 b1 a2 b2)

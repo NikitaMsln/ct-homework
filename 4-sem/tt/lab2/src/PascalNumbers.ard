@@ -1,0 +1,173 @@
+\import Arith.Nat
+\import Logic
+\import Paths
+\import Algebra.Monoid
+
+\func fact (n : Nat) : Nat \elim n
+    | 0 => 1
+    | suc n => fact n * suc n
+
+\func a*b=0sol {a b : Nat} (e : a * b = 0) (nz : a = 0 -> Empty) : b = 0 \elim a, b
+    | 0, b => \case (nz idp) \with {}
+    | suc a, 0 => idp
+    | suc a, suc b => \case suc/=0 {suc a * b + a} ((inv (NatSemiring.+-assoc {suc a * b} {a} {1})) *> e) \with {}
+        
+\func prod/=0 {a b : Nat} (ea : a = 0 -> Empty) (eb : b = 0 -> Empty) (e : a * b = 0) : Empty => eb (a*b=0sol e ea)
+
+\func fact/=0 {n : Nat} (e : fact n = 0) : Empty \elim n, e
+    | 0, e => suc/=0 {0} e
+    | suc n, e => prod/=0 {fact n} {suc n} (fact/=0 {n}) (suc/=0 {n}) e
+
+\func c_a_b (a b : Nat) : Nat => fact (a + b) Nat.div ((fact a) * (fact b))
+
+\lemma self-mod=0 {n : Nat} : n Nat.mod n = 0 => div_mod Monoid.LDiv.id-div
+
+\func suc-reject {a b : Nat} (e : suc a = suc b) : a = b => pmap pred e
+
+\func sum-reject {a b c : Nat} (e : a + c = b + c) : a = b \elim c
+    | 0 => e
+    | suc c => sum-reject (suc-reject e)
+
+\func prod-reject {a b c : Nat} (e : a * c = b * c) (nz : c = 0 -> Empty) : a = b \elim a, b
+    | 0, 0 => idp
+    | suc a, 0 => \case prod/=0 suc/=0 nz (e *> NatSemiring.*-comm) \with {}
+    | 0, suc b => \case prod/=0 suc/=0 nz (inv e *> NatSemiring.*-comm) \with {}
+    | suc a, suc b => pmap suc (prod-reject {a} {b} {c} (NatSemiring.*-comm *> sum-reject (NatSemiring.*-comm *> e *> NatSemiring.*-comm) *> NatSemiring.*-comm) nz)
+
+\func ldiv-eq {a b : Nat} (p : a = b) : Monoid.LDiv a b => mod_div (pmap (\lam x => x Nat.mod a) (inv p) *> self-mod=0 {a})
+
+\func div-*-inv {a b : Nat} (e : a Nat.mod b = 0) : b * (a Nat.div b) = a =>
+    pmap (\lam x => b * (a Nat.div b) + x) (inv e) *> Nat.divModProp a b
+
+\lemma a*bmoda=0 {a b : Nat} : (a * b) Nat.mod a = 0 => div_mod (Monoid.LDiv.product-left a 1 b (ldiv-1))
+    \where {
+        \func ldiv-1 {a : Nat} : Monoid.LDiv 1 a => mod_div idp
+    }
+
+\func linear-solve {a b c : Nat} (e : a * b = c) (nz : b = 0 -> Empty) : a = (c Nat.div b) =>
+    prod-reject (
+        NatSemiring.*-comm *>
+        inv (div-*-inv {b * a} {b} (a*bmoda=0 {b} {a})) *>
+        pmap (\lam x => b * (x Nat.div b)) (NatSemiring.*-comm *> e) *>
+        NatSemiring.*-comm
+    ) nz
+
+\func self-div=1 {n : Nat} (nz : n = 0 -> Empty) : n Nat.div n = 1 => inv (linear-solve {1} {n} {n} (NatSemiring.*-comm {1} {n}) nz)
+
+\func div->sum=sumdiv {a b m : Nat} (l : Monoid.LDiv m a) (r : Monoid.LDiv m b) : a + b = m * (a Nat.div m + b Nat.div m) =>
+    pmap (\lam x => x + b) (inv (div-*-inv (div_mod l))) *>
+    pmap (\lam x => m * (a Nat.div m) + x) (inv (div-*-inv (div_mod r))) *>
+    inv (NatSemiring.ldistr {m} {a Nat.div m} {b Nat.div m}) 
+
+\func div-sum {a b m : Nat} (l : Monoid.LDiv m a) (r : Monoid.LDiv m b) (nz : m = 0 -> Empty) :
+    a Nat.div m + b Nat.div m = (a + b) Nat.div m =>
+        linear-solve (NatSemiring.*-comm *> inv (div->sum=sumdiv l r)) nz
+
+\func div-+ {a b m : Nat} (l : Monoid.LDiv m a) (r : Monoid.LDiv m b) (nz : m = 0 -> Empty) : Monoid.LDiv m (a + b) => 
+    mod_div (NatSemiring.cancel-left (m * ((a + b) Nat.div m)) (
+        Nat.divModProp (a + b) m *>
+        div->sum=sumdiv l r *>
+        inv (pmap (\lam x => m * x) (inv (linear-solve (inv (div->sum=sumdiv l r *> NatSemiring.*-comm)) nz)))
+    ))
+
+\func div-* {a b c : Nat} (l : Monoid.LDiv c a) (nz : c = 0 -> Empty) : Monoid.LDiv c (a * b) \elim b
+    | 0 => mod_div idp
+    | suc b => div-+ (div-* {a} {b} {c} l nz) l nz
+
+\func up-suc-left {a b : Nat} : suc a + b = suc (a + b) =>
+    (NatSemiring.+-comm {suc a} {b} ) *> idp *> pmap suc (NatSemiring.+-comm {b} {a}) 
+
+\func c_a_b-ldiv (a b : Nat) : Monoid.LDiv (fact a * fact b) (fact (a + b)) \elim a, b
+    | a, 0 => ldiv-eq idp
+    | 0, b => ldiv-eq (NatSemiring.*-comm {fact 0} {fact b} *> pmap (\lam x => fact x) (NatSemiring.+-comm {b} {0}))
+    | suc a, suc b => mod_div (
+        pmap (\lam x => x Nat.mod (fact (suc a) * fact (suc b))) (NatSemiring.ldistr {fact (suc a + b)} {suc a} {suc b}) *>
+        div_mod (div-+ {fact (suc a + b) * (suc a)} {fact (suc a + b) * (suc b)} {fact (suc a) * fact (suc b)}
+            (mod_div (
+                pmap (\lam x => (fact (suc a + b) * suc a) Nat.mod x) (NatSemiring.*-comm {fact (suc a)} {fact (suc b)}) *>
+                pmap (\lam x => (fact (suc a + b) * suc a) Nat.mod x) (inv (NatSemiring.*-assoc {fact (suc b)} {fact a} {suc a})) *>
+                pmap (\lam x => (fact (suc a + b) * suc a) Nat.mod (x * suc a)) (NatSemiring.*-comm {fact (suc b)} {fact a}) *>
+                pmap (\lam x => (fact x * suc a) Nat.mod (fact a * fact (suc b) * suc a)) up-suc-left *>
+                div_mod (Monoid.LDiv.product-right (fact a * fact (suc b)) (fact (a + suc b)) (suc a) (c_a_b-ldiv a (suc b)))
+            ))
+            (mod_div (
+                pmap (\lam x => (fact (suc a + b) * suc b) Nat.mod x) (inv (NatSemiring.*-assoc {fact (suc a)} {fact b} {suc b})) *>
+                div_mod (Monoid.LDiv.product-right (fact (suc a) * fact b) (fact (suc a + b)) (suc b) (c_a_b-ldiv (suc a) b))
+            ))
+            (prod/=0 {fact (suc a)} {fact (suc b)} (fact/=0 {suc a}) (fact/=0 {suc b}))
+        )
+    )
+
+\func div*-assoc (a b c : Nat) (l : Monoid.LDiv b a) (nz : b = 0 -> Empty) : (a * c) Nat.div b = (a Nat.div b) * c =>
+    inv (linear-solve {(a Nat.div b) * c} {b} {a * c} (
+        NatSemiring.*-comm {(a Nat.div b) * c} {b} *>
+        inv (NatSemiring.*-assoc {b} {a Nat.div b} {c}) *>
+        pmap (\lam x => x * c) (div-*-inv (div_mod l))
+    ) nz)
+
+
+\func nom&denom*= (a b c : Nat) (l : Monoid.LDiv b a) (nzb : b = 0 -> Empty) (nzc : c = 0 -> Empty) :
+    a Nat.div b = (a * c) Nat.div (b * c) =>
+        inv (linear-solve {(a * c) Nat.div (b * c)} {b} {a} (
+            NatSemiring.*-comm {(a * c) Nat.div (b * c)} {b} *>
+            prod-reject {b * ((a * c) Nat.div (b * c))} {a} {c} (
+                NatSemiring.*-comm {b * ((a * c) Nat.div (b * c))} {c} *>
+                inv (NatSemiring.*-assoc {c} {b} {(a * c) Nat.div (b * c)}) *>
+                pmap (\lam x => x * ((a * c) Nat.div (b * c))) (NatSemiring.*-comm {c} {b}) *>
+                div-*-inv {a * c} {b * c} (div_mod (Monoid.LDiv.product-right b a c l))
+            ) nzc
+        ) nzb)
+
+\func c_a_b-recursive (a b : Nat) : c_a_b (suc a) (suc b) = (c_a_b (suc a) b) + (c_a_b a (suc b)) => 
+    inv (
+        pmap (\lam x => x + c_a_b a (suc b)) (
+            nom&denom*=
+                (fact (suc a + b))
+                (fact (suc a) * fact b)
+                (suc b)
+                (c_a_b-ldiv (suc a) b)
+                (prod/=0 (fact/=0 {suc a}) (fact/=0 {b}))
+                suc/=0 *>
+            pmap (\lam x => (fact (suc a + b) * suc b) Nat.div x) (NatSemiring.*-assoc {fact (suc a)} {fact b} {suc b})
+        ) *>
+        pmap (\lam x => (fact (suc a + b) * suc b) Nat.div (fact (suc a) * fact (suc b)) + x) (
+            nom&denom*=
+                (fact (a + suc b))
+                (fact a * fact (suc b))
+                (suc a)
+                (c_a_b-ldiv a (suc b))
+                (prod/=0 (fact/=0 {a}) (fact/=0 {suc b}))
+                suc/=0 *>
+            pmap (\lam x => (fact (a + suc b) * suc a) Nat.div x) (
+                NatSemiring.*-comm {fact a * fact (suc b)} {suc a} *>
+                (inv (NatSemiring.*-assoc {suc a} {fact a} {fact (suc b)})) *>
+                pmap (\lam x => x * fact (suc b)) (NatSemiring.*-comm {suc a} {fact a})
+            )
+        ) *>
+        div-sum {fact (suc a + b) * suc b} {fact (a + suc b) * suc a} {fact (suc a) * fact (suc b)} 
+            (ldiv-change-denom
+                (Monoid.LDiv.product-right (fact (suc a) * fact b) (fact (suc a + b)) (suc b) (c_a_b-ldiv (suc a) b))
+                (NatSemiring.*-assoc {fact (suc a)} {fact b} {suc b} : fact (suc a) * fact b * suc b = fact (suc a) * fact (suc b))
+            )
+            (ldiv-change-denom
+                (Monoid.LDiv.product-right (fact a * fact (suc b)) (fact (a + suc b)) (suc a) (c_a_b-ldiv a (suc b)))
+                (
+                    NatSemiring.*-comm {fact a * fact (suc b)} {suc a} *>
+                    inv (NatSemiring.*-assoc {suc a} {fact a} {fact (suc b)}) *>
+                    pmap (\lam x => x * fact (suc b)) (NatSemiring.*-comm {suc a} {fact a})
+                )
+            )
+            (prod/=0 (fact/=0 {suc a}) (fact/=0 {suc b})) *>
+        pmap (\lam x => x Nat.div (fact (suc a) * fact (suc b))) (
+            pmap (\lam x => (fact x * suc b) + (fact (suc (a + b)) * suc a)) (up-suc-left {a} {b}) *>
+            inv (NatSemiring.ldistr {fact (suc (a + b))} {suc b} {suc a}) *>
+            pmap (\lam x => fact (suc (a + b)) * x) (
+                NatSemiring.+-comm {suc b} {suc a}
+            ) *>
+            pmap (\lam x => fact x * (suc a + suc b)) (inv (up-suc-left {a} {b}))
+        )
+    )
+    \where {
+        \func ldiv-change-denom {a b c : Nat} (d : Monoid.LDiv a b) (ea : a = c) : Monoid.LDiv c b =>
+            mod_div ( pmap (\lam x => b Nat.mod x) (inv ea) *> div_mod d)
+    }

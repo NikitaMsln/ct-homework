@@ -1,0 +1,218 @@
+\import Logic
+\import Paths
+\import Arith.Nat
+\import Algebra.Monoid
+\import Algebra.Monoid.Prime
+\import Order.PartialOrder
+\import Order.LinearOrder
+\import PascalNumbers
+\import NewtonsBinom
+\import Sum
+
+\func prime>=2 {p : Nat} (pp : Prime p) : 2 LinearOrder.<= p \elim p
+    | 0 => \case pp.isCancelable-left {0} {1} idp
+    | 1 => absurd (pp.notInv Monoid.Inv.ide-isInv)
+    | suc (suc a) => suc<=suc (suc<=suc (zero<=_ {a}))
+
+\func prime/=0 {c : Nat} (p : Prime c) (e : c = 0) : Empty \elim c
+    | 0 => suc/=0 {0} (inv (p.isCancelable-left {0} {1} idp))
+    | suc c => suc/=0 {c} e
+
+\func pow1=1 (n : Nat) : Monoid.pow 1 n = 1 \elim n
+    | 0 => idp
+    | suc n => pow1=1 n
+
+\func div-in-mod {a b c : Nat} (p : Prime c) (nl : Monoid.LDiv c a -> Empty) (l : Monoid.LDiv c (a * b)) : Monoid.LDiv c b =>
+    ||.rec (Monoid.LDiv.cancelProp c (\lam (x y : Nat) (e : c * x = c * y) => prod-reject (NatSemiring.*-comm {x} {c} *> e *> NatSemiring.*-comm {c} {y}) (prime/=0 p)) b) (\lam x => \case nl x \with {}) (\lam x => x) (p.isPrime l)
+
+\func prod-not-div {a b c : Nat} (p : Prime c) (nda : Monoid.LDiv c a -> Empty) (ndb : Monoid.LDiv c b -> Empty) (ndab : Monoid.LDiv c (a * b)) : Empty =>
+    ndb (div-in-mod {a} {b} {c} p nda ndab)
+
+\func -'+-assoc {a b c : Nat} (l : c LinearOrder.<= b) : (a + b) -' c = a + (b -' c) \elim a, b, c
+    | 0, 0, 0 => idp
+    | suc a, 0, 0 => idp
+    | a, suc b, 0 => idp
+    | a, suc b, suc c => -'+-assoc {a} {b} {c} (suc<=suc.conv {c} {b} l)
+    | a, 0, suc c => \case LinearOrder.notLess l (nonZero>0 {suc c} (suc/=0 {c})) \with {}
+
+\func pow>= {a b : Nat} (nz : b = 0 -> Empty) : a LinearOrder.<= Monoid.pow a b \elim a, b
+    | 0, b => zero<=_ {Monoid.pow 0 b}
+    | suc a, 0 => \case nz idp \with {}
+    | suc a, 1 => Preorder.=_<= (NatSemiring.*-comm {suc a} {1})
+    | suc a, suc (suc b) => LinearOrder.<=-transitive (pow>= {suc a} {suc b} (suc/=0 {b})) (<=_* (Preorder.=_<= idp) (suc<=suc {0} {a} (zero<=_ {a})))
+
+\func pre-fermat (a p : Nat) (pp : Prime p) : Monoid.LDiv p (Monoid.pow a p -' a) \elim a, p
+    | _, 0 => \case pp.isCancelable-left {0} {1} idp
+    | _, 1 => absurd (pp.notInv Monoid.Inv.ide-isInv)
+    | 0, p => mod_div (pmap (\lam x => (x -' 0) Nat.mod p) (zero-pow pp) *> zero-mod=zero pp)
+    | suc a, suc (suc p) => mod_div (
+        pmap (\lam x => x Nat.mod (suc (suc p))) (
+            pmap (\lam x => x -' (suc a)) (
+                newton-binom-decompos a 1 (suc (suc p)) *>
+                sum-first-take (suc p) (\lam i => binom-elem a 1 i ((suc (suc p)) -' i)) *>
+                NatSemiring.+-assoc {sum p (\lam i => binom-elem a 1 (suc i) (suc p -' i))} {binom-elem a 1 (suc (suc p)) (p -' p)} {binom-elem a 1 0 (suc (suc p))} *>
+                pmap (\lam x => sum p (\lam i => binom-elem a 1 (suc i) (suc p -' i)) + x) (
+                    pmap (\lam x => binom-elem a 1 (suc (suc p)) (p -' p) + x) (
+                        binom-elem-eq-right a 1 (suc (suc p)) *>
+                        pow1=1 (suc (suc p))
+                    ) *>
+                    pmap (\lam x => suc x) (
+                        pmap (\lam x => binom-elem a 1 (suc (suc p)) x) (-'id {p}) *>
+                        binom-elem-eq-left a 1 (suc (suc p))
+                    )
+                )
+            ) *>
+            -'+-assoc {sum p (\lam i => binom-elem a 1 (suc i) (suc p -' i))} {Monoid.pow a (suc (suc p))} {a} (pow>= {a} {suc (suc p)} (suc/=0 {suc p})) *>
+            pmap (\lam x => x + (Monoid.pow a (suc (suc p)) -' a)) (sumf=sumg
+                p
+                (\lam i => binom-elem a 1 (suc i) (suc p -' i))
+                (\lam i => binom-elem a 1 (suc i) (suc (p -' i)))
+                (\lam (i : Nat) (l : i LinearOrder.<= p) =>
+                    pmap (\lam x => binom-elem a 1 (suc i) x) (
+                        pmap (\lam x => x -' i) (NatSemiring.+-comm {p} {1}) *>
+                        -'+-assoc {1} {p} {i} l *>
+                        NatSemiring.+-comm {1} {p -' i}
+                    )
+                )
+            )
+        ) *>
+        div_mod (div-+ {sum p (\lam i => binom-elem a 1 (i + 1) (suc (p -' i)))} {Monoid.pow a (p + 2) -' a} {suc (suc p)}
+            (sum-pred {\lam x => Monoid.LDiv (suc (suc p)) x} p
+                (\lam i => binom-elem a 1 (i + 1) (suc (p -' i)))
+                (\lam (x y : Nat) (xd : Monoid.LDiv (suc (suc p)) x) (yd : Monoid.LDiv (suc (suc p)) y) => div-+ {x} {y} {suc (suc p)} xd yd (suc/=0 {suc p}))
+                (\lam (i : Nat) (l : i LinearOrder.<= p) => binom-elem-prime-div
+                    {a} {1} {i} {p -' i} {suc (suc p)} pp
+                    (
+                        up-suc-left {i} {suc (p -' i)} *>
+                        pmap (\lam x => suc (suc x)) (<=_exists {i} {p} l)
+                    )
+                )
+            ) 
+            (pre-fermat a (suc (suc p)) pp)
+            (suc/=0 {suc p})
+        ))
+    \where {
+        \func zero-mod=zero {p : Nat} (pp : Prime p) : 0 Nat.mod p = 0 \elim p
+            | 0 => \case pp.isCancelable-left {0} {1} idp
+            | suc p => NatSemiring.+-comm {0 Nat.mod p} {0} *> Nat.divModProp 0 p
+        
+        \func zero-pow {p : Nat} (pp : Prime p) : Monoid.pow 0 p = 0 \elim p
+            | 0 => \case pp.isCancelable-left {0} {1} idp
+            | suc p => idp {Nat} {Monoid.pow 0 p * 0}
+        
+        \func less-fact-prime-div {a p : Nat} (pp : Prime p) (l : a NatSemiring.< p) (m : Monoid.LDiv p (fact a)) : Empty \elim a
+            | 0 => suc/=0 (inv (mod_< (LinearOrder.<-transitive-left (id<suc {1}) (prime>=2 pp))) *> (div_mod m))
+            | suc a => \case pp.isPrime m \with {
+                | byLeft facta/p => less-fact-prime-div pp (LinearOrder.<-transitive-left (id<suc {a}) (LinearOrder.<=-less l)) facta/p
+                | byRight suca/p => suc/=0 (inv (mod_< l) *> (div_mod suca/p))
+            }
+        
+        \func div-in-num {a b c : Nat} (la : Monoid.LDiv c a) (nlb : Monoid.LDiv c b -> Empty) (lab : Monoid.LDiv b a) (p : Prime c) :
+            Monoid.LDiv c (a Nat.div b) => 
+            div-in-mod {b} {a Nat.div b} {c} p nlb (mod_div (pmap (\lam x => x Nat.mod c) (div-*-inv (div_mod lab)) *> (div_mod la)))
+        
+        \func a<a+suc {a b : Nat} : a LinearOrder.< a + suc b \elim b
+            | 0 => id<suc {a}
+            | suc b => LinearOrder.<-transitive-left (a<a+suc {a} {b}) (LinearOrder.<=-less (id<suc {a + suc b}))
+        
+        \func <-change-arg {a b c : Nat} (l : a LinearOrder.< b) (e : b = c) : a LinearOrder.< c =>
+            LinearOrder.<-transitive-left l (Preorder.=_<= e)
+         
+        \func c_a_b-prime-div {a b p : Nat} (pp : Prime p) (e : suc a + suc b = p) :
+            Monoid.LDiv p (c_a_b (suc a) (suc b)) => div-in-num
+                (mod_div (
+                    pmap (\lam x => x Nat.mod p) (NatSemiring.*-comm {fact (suc a + b)} {suc a + suc b}) *>
+                    pmap (\lam x => ((suc a + suc b) * fact (suc a + b)) Nat.mod x) (inv e) *> 
+                    a*bmoda=0 {suc a + suc b} {fact (suc a + b)}
+                ))
+                (prod-not-div {fact (suc a)} {fact (suc b)} {p}
+                    pp
+                    (less-fact-prime-div pp (<-change-arg (a<a+suc {suc a} {b}) e))
+                    (less-fact-prime-div pp (<-change-arg (a<a+suc {suc b} {a}) (NatSemiring.+-comm {suc b} {suc a} *> e)))
+                )
+                (c_a_b-ldiv (suc a) (suc b))
+                pp
+        
+        \func binom-elem-prime-div {a b i k p : Nat} (pp : Prime p) (e : suc i + suc k = p) : Monoid.LDiv p (binom-elem a b (suc i) (suc k)) =>
+            div-* {c_a_b (suc i) (suc k)} {Monoid.pow a (suc i) * Monoid.pow b (suc k)} {p} (c_a_b-prime-div pp e) (prime/=0 pp)
+    }
+
+\func -'ldistr (a b c : Nat) : a * (b -' c) = a * b -' a * c \elim b, c
+    | 0, 0 => idp
+    | 0, suc c => idp
+    | suc b, 0 => inv (-'zero (a * suc b))
+    | suc b, suc c => -'ldistr a b c *> inv (suc-distr-' a b c)
+    \where {
+        \func -'zero (a : Nat) : a -' 0 = a \elim a
+            | 0 => idp
+            | suc a => idp
+
+        \func -'-'-assoc (a b c : Nat) : a -' b -' c = a -' (b + c) \elim a, b, c
+            | 0, _, _ => idp
+            | suc a, 0, 0 => idp
+            | suc a, suc b, 0 => -'zero (a -' b)
+            | suc a, 0, suc c => pmap (\lam x => a -' x) (NatSemiring.+-comm {c} {0})
+            | suc a, suc b, suc c => -'-'-assoc a b (suc c) *> pmap (\lam x => a -' x) (inv up-suc-left)
+
+        \func suc-distr-' (a b c : Nat) : a * (suc b) -' a * (suc c) = a * b -' a * c =>
+            pmap (\lam x => x -' a * (suc c)) (NatSemiring.ldistr {a} {b} {1}) *>
+            pmap (\lam x => (a * b + a) -' x) (NatSemiring.ldistr {a} {c} {1} *> NatSemiring.+-comm {a * c} {a}) *>
+            inv (-'-'-assoc (a * b + a) a (a * c)) *>
+            pmap (\lam x => x -' a * c) (-'+-assoc {a * b} {a} {a} (Preorder.=_<= idp) *> pmap (\lam x => a * b + x) (-'id {a}))
+    }
+
+\func fermat (a p : Nat) (pp : Prime p) (nd : (Monoid.LDiv p a) -> Empty) : (Monoid.pow a (pred p)) Nat.mod p = 1 => 
+    pred-mod {Monoid.pow a (pred p)} {p}
+        (prime>=2 pp)
+        (div-in-mod {a} {Monoid.pow a (pred p) -' 1} {p}
+            pp
+            nd
+            (mod_div (
+                pmap (\lam x => x Nat.mod p) (
+                    -'ldistr a (Monoid.pow a (pred p)) 1 *>
+                    pmap (\lam x => x -' a) (
+                        NatSemiring.*-comm {a} {Monoid.pow a (pred p)} *>
+                        pmap (\lam x => Monoid.pow a x) (inv (pow-pred (prime/=0 pp)))
+                    )
+                ) *>
+
+                div_mod (pre-fermat a p pp)
+            ))
+        )
+        (pred-mod-cond {a} {p} nd (prime/=0 pp))
+    \where {
+        \lemma suc-mod (a b : Nat) (e : a Nat.mod b = 0) (l : 1 NatSemiring.< b) : (suc a) Nat.mod b = 1 =>
+            mod-unique {b} {(suc a) Nat.div b} {(suc a) Nat.mod b} {a Nat.div b} {1}
+                (mod<right (\lam x => LinearOrder.notLess (Preorder.=_<= x) (NatSemiring.<-transitive (nonZero>0 (suc/=0 {0})) l)))
+                (l)
+                (
+                    Nat.divModProp (suc a) b *>
+                    pmap (\lam x => x + 1) (inv (div-*-inv e))
+                )
+        
+        \func a-'0=a {a : Nat} : a -' 0 = a \elim a
+            | 0 => idp
+            | suc a => idp
+
+        \func pred-mod {a b : Nat} (l : 2 NatSemiring.<= b) (d : Monoid.LDiv b (a -' 1)) (nz : a = 0 -> Empty) : a Nat.mod b = 1 \elim a
+            | 0 => \case nz idp \with {}
+            | suc a => suc-mod a b (pmap (\lam x => x Nat.mod b) (inv a-'0=a) *> div_mod d) (LinearOrder.<-transitive-left (NatSemiring.suc<suc (nonZero>0  (suc/=0 {0}))) l)
+        
+        \func pow-pred {b : Nat} (nz : b = 0 -> Empty) : b = suc (pred b) \elim b
+            | 0 => \case nz idp \with {}
+            | suc b => idp
+        
+        \func pred-mod-cond {a p : Nat} (nd : (Monoid.LDiv p a) -> Empty) (nz : p = 0 -> Empty) (e : Monoid.pow a (pred p) = 0) : Empty \elim a
+            | 0 => nd (div-* {p} {0} {p} Monoid.LDiv.id-div nz)
+            | suc a => suc/=0 {a} (pow=0 e)
+        
+        \func prod=zero (a b : Nat) (e : a * b = 0) (ne : b = 0 -> Empty) : a = 0 \elim a, b
+            | a, 0 => \case ne idp \with {}
+            | 0, suc b => idp
+            | suc a, suc b => \case suc/=0 {suc a * b + a} (inv (NatSemiring.ldistr {suc a} {b} {1}) *> e) \with {}
+
+        \func pow=0 {a p : Nat} (e : Monoid.pow a p = 0) : a = 0 \elim a, p
+            | 0, p => idp
+            | suc a, 0 => \case suc/=0 {0} e \with {}
+            | suc a, suc p => pow=0 {suc a} {p} (prod=zero (Monoid.pow (suc a) p) (suc a) e (suc/=0 {a})) 
+    }

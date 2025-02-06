@@ -1,0 +1,31 @@
+\import Paths
+\import Data.Fin
+\open Nat
+
+\data FixedLenList (A : \Type) (n : Nat) \elim n
+    | 0 => nil-fll 
+    | suc n => next-fll (h : A) (t : FixedLenList A n)
+
+\func get {A : \Type} {n : Nat} (l : FixedLenList A n) (i : Fin n) : A \elim n, l, i
+    | suc n, next-fll h l, 0 => h
+    | suc n, next-fll h l, suc i => get l i
+
+\func map {A B : \Type} {n : Nat} (f : A -> B) (l : FixedLenList A n) : FixedLenList B n \elim n, l
+    | 0, nil-fll => nil-fll
+    | suc n, next-fll a l => next-fll (f a) (map f l)
+
+\func map-change {A B : \Type} {n : Nat} (f : A -> B) (l : FixedLenList A n) (i : Fin n) : get (map f l) i = f (get l i) \elim n, l, i
+    | suc n, next-fll a l, 0 => idp
+    | suc n, next-fll a l, suc i => map-change f l i
+
+\func list-eq-by-elem {A : \Type} {n : Nat} (x y : FixedLenList A n) (eq : \Pi (i : Fin n) -> get x i = get y i) : x = y \elim n, x, y
+    | 0, nil-fll, nil-fll => idp
+    | suc n, next-fll xh xt, next-fll yh yt => path (\lam i => next-fll (eq 0 i) (list-eq-by-elem xt yt (\lam j => eq (fsuc j)) i))
+
+\func list-from-func {A : \Type} {n : Nat} (f : Fin n -> A) : FixedLenList A n \elim n
+    | 0 => nil-fll
+    | suc n => next-fll (f 0) (list-from-func (\lam (i : Fin n) => f (fsuc i)))
+
+\func list-from-func-elems {A : \Type} {n : Nat} (f : Fin n -> A) (i : Fin n) : get (list-from-func f) i = f i \elim n, i
+    | suc n, 0 => idp
+    | suc n, suc i => list-from-func-elems (\lam (i : Fin n) => f (fsuc i)) i

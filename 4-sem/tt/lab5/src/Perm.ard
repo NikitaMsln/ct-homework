@@ -1,0 +1,710 @@
+\import Data.Fin
+\import Paths
+\import Arith.Nat
+\import Order.PartialOrder
+\import Order.LinearOrder
+\import Logic
+\import Logic.Meta
+\import Set
+\import Set.Fin
+\import Data.Or
+\open Nat
+
+\func sigma-eq {A B : \Type} {a a' : A} {b b' : B} (ea : a = a') (eb : b = b') : (a, b) = (a', b') =>
+    pmap (\lam x => (x, b)) ea *> pmap (\lam x => (a', x)) eb
+
+\data FixedSizeList (A : \Type) (n : Nat) \elim n
+    | 0 => nil-fsl
+    | suc n => next-fsl A (FixedSizeList A n)
+
+\func get {A : \Type} {n : Nat} (l : FixedSizeList A n) (i : Fin n) : A \elim n, l, i
+    | suc n, next-fsl a l, 0 => a
+    | suc n, next-fsl a l, suc i => get l i
+
+\func uniquies {A : \Type} {n : Nat} (l : FixedSizeList A n) => \Pi (i j : Fin n) -> get l i = get l j -> i = j
+
+\func allin {A : \Type} {n : Nat} (l : FixedSizeList A n) => \Pi (a : A) -> \Sigma (i : Fin n) (get l i = a)
+
+\func inj {A B : \Type} (f : A -> B) => \Pi (x y : A) -> (f x = f y) -> x = y
+
+\func surj {A B : \Type} (f : A -> B) => \Pi (b : B) -> \Sigma (a : A) (f a = b)
+
+\func bij {A B : \Type} (f : A -> B) => \Sigma (inj f) (surj f)
+
+\data Perm (n : Nat) | perm (l : FixedSizeList (Fin n) n) (\property un : uniquies l)
+
+\func get-list {n : Nat} (p : Perm n) : FixedSizeList (Fin n) n \elim p
+    | perm l un => l
+
+\func get-uniq-prop {n : Nat} (p : Perm n) : uniquies (get-list p) \elim p
+    | perm l un => un
+
+\func fact (n : Nat) : Nat \elim n
+    | 0 => 1
+    | suc n => fact n * suc n
+
+\func erase {A : \Type} {n : Nat} (l : FixedSizeList A (suc n)) (i : Fin (suc n)) : FixedSizeList A n \elim n, l, i
+    | n, next-fsl a l, 0 => l
+    | suc n, next-fsl a l, suc i => next-fsl a (erase l i)
+
+\func is-sublist {A : \Type} {n m : Nat} (x : FixedSizeList A n) (y : FixedSizeList A m) => \Pi (i : Fin n) -> \Sigma (j : Fin m) (get x i = get y j)
+
+\func erase0= {A : \Type} {n : Nat} (a : A) (l : FixedSizeList A n) : erase (next-fsl a l) 0 = l \elim n, a, l 
+    | 0, a, nil-fsl => idp
+    | suc n, a, next-fsl b l => idp
+
+\func erase-sublist {A : \Type} {n : Nat} (l : FixedSizeList A (suc n)) (i : Fin (suc n)) (j : Fin n) : \Sigma (k : Fin (suc n)) (get (erase l i) j = get l k) \elim n, l, i, j
+    | n, next-fsl a l, 0, j => (suc j, pmap (\lam x => get x j) (erase0= a l))
+    | suc n, next-fsl a l, suc i, 0 => (0, idp)
+    | suc n, next-fsl a l, suc i, suc j => \case erase-sublist l i j \with {
+        (k, e) => (suc k, e)
+    }
+
+\func sublist-not-contains {A : \Type} {n m : Nat} (x : FixedSizeList A n) (y : FixedSizeList A m) (sb : is-sublist x y)
+    (a : A) (ne : \Pi (i : Fin m) -> (get y i = a) -> Empty) (j : Fin n) (e : get x j = a) : Empty =>
+        ne (sb j).1 (inv (sb j).2 *> e)
+
+\func add-uniq {A : \Type} {n : Nat} (l : FixedSizeList A n) (u : uniquies l) (a : A) (ne : \Pi (i : Fin n) -> (get l i = a) -> Empty) (i j : Fin (n + 1)) (e : get (next-fsl a l) i = get (next-fsl a l) j) : i = j
+    \elim i, j 
+        | 0, 0 => idp
+        | suc i, 0 => \case (ne i e) \with {}
+        | 0, suc j => \case (ne j (inv e)) \with {}
+        | suc i, suc j => pmap fsuc (u i j e)
+
+\func remove-uniq {A : \Type} {n : Nat} (a : A) (l : FixedSizeList A n) (u : uniquies (next-fsl a l)) : \Sigma (\Pi (i : Fin n) -> (get l i = a) -> Empty) (uniquies l) \elim n
+    | 0 => (\lam (i : Fin 0) => \case i \with {}, \lam (i : Fin 0) => \case i \with {})
+    | suc n => (\lam (i : Fin (suc n)) (e : get l i = a) => suc/=0 (u (suc i) 0 e), \lam (i j : Fin (suc n)) (e : get l i = get l j) => pmap finpred (u (fsuc i) (fsuc j) e))
+    \where {
+        \func finpred {n : Nat} (a : Fin (suc (suc n))) : Fin (suc n) \elim a
+            | 0 => 0
+            | suc a => a
+    }
+
+\func erase-uniq {A : \Type} {n : Nat} (l : FixedSizeList A (suc n)) (i : Fin (suc n)) (u : uniquies l) : \Sigma (\Pi (j : Fin n) -> (get (erase l i) j = get l i) -> Empty) (uniquies (erase l i)) \elim n, l, i
+    | n, next-fsl a l, 0 => (
+        \lam (j : Fin n) (e : (get (erase (next-fsl a l) 0) j = a)) => suc/=0 (u (suc j) 0 (pmap (\lam x => get x j) (inv (erase0= a l)) *> e)),
+        \lam (i1 j1 : Fin n) (e : get (erase (next-fsl a l) 0) i1 = get (erase (next-fsl a l) 0) j1) =>
+        (remove-uniq a l u).2 i1 j1 (pmap (\lam x => get x i1) (inv (erase0= a l)) *> e *> pmap (\lam x => get x j1) (erase0= a l))
+    )
+    | suc n, next-fsl a l, suc i => (
+        ne-next a l u i,
+        add-uniq (erase l i) (erase-uniq l i (remove-uniq a l u).2).2 a
+        (sublist-not-contains (erase l i) l (erase-sublist l i) a (remove-uniq a l u).1)
+    ) \where {
+        \func ne-next {n : Nat} {A : \Type} (a : A) (l : FixedSizeList A (suc n)) (u : uniquies (next-fsl a l)) (i : Fin (suc n)) (j : Fin (suc n)) (e : (get (erase (next-fsl a l) (suc i)) j = get (next-fsl a l) (suc i))) : Empty \elim j
+            | 0 => suc/=0 (u (suc i) 0 (inv e))
+            | suc j => (erase-uniq l i (remove-uniq a l u).2).1 j e
+    }
+
+\func insert {A : \Type} {n : Nat} (l : FixedSizeList A n) (a : A) (i : Fin (suc n)) : FixedSizeList A (suc n) \elim n, l, i
+    | n, l, 0 => next-fsl a l
+    | suc n, next-fsl h t, suc i => next-fsl h (insert t a i)
+
+\func insert0=next {A : \Type} {n : Nat} (l : FixedSizeList A n) (a : A) : insert l a (0 : Fin (suc n)) = next-fsl a l \elim n, l
+    | suc n, next-fsl h l => idp
+    | 0, nil-fsl => idp
+
+\func insert-eq {A : \Type} {n : Nat} (l : FixedSizeList A n) (a : A) (i : Fin (suc n)) : get (insert l a i) i = a \elim n, l, i
+    | n, l, 0 => pmap (\lam t => get t 0) (insert0=next l a)
+    | suc n, next-fsl h t, suc i => insert-eq t a i
+
+\func erase-insert {A : \Type} {n : Nat} (l : FixedSizeList A n) (i : Fin (suc n)) (a : A) : erase (insert l a i) i = l \elim n, l, i
+    | n, l, 0 => pmap (\lam t => erase t 0) (insert0=next l a) *> erase0= a l
+    | suc n, next-fsl h l, suc i => pmap (\lam t => next-fsl h t) (erase-insert l i a)
+
+\func insert-uniq {A : \Type} {n : Nat} (l : FixedSizeList A n) (u : uniquies l) (a : A) (i : Fin (suc n))
+    (nc : \Pi (j : Fin n) -> (get l j = a) -> Empty) : uniquies (insert l a i) \elim n, l, i
+        | n, l, 0 => (\lam (p q : Fin (suc n)) (e : get (insert l a 0) p = get (insert l a 0) q) => add-uniq l u a nc p q (pmap (\lam t => get t p) (inv (insert0=next l a)) *> e *> pmap (\lam t => get t q) (insert0=next l a)))
+        | suc n, next-fsl h l, suc i => add-uniq (insert l a i) (insert-uniq l (remove-uniq h l u).2 a i (\lam j => nc (suc j))) h (exp-not-contains l a i h (\lam (e : a = h) => nc 0 (inv e)) (\lam (j : Fin n) (e : get l j = h) => suc/=0 (u (suc j) 0 e)))
+        \where {
+            \func exp-not-contains {A : \Type} {n : Nat} (l : FixedSizeList A n) (a : A) (i : Fin (suc n))
+                (x : A) (na : a = x -> Empty) (nc : \Pi (j : Fin n) -> (get l j = x) -> Empty)
+                (k : Fin (suc n)) (e : get (insert l a i) k = x) : Empty \elim n, l, i, k
+                    | n, l, 0, 0 => na (pmap (\lam t => get t 0) (inv (insert0=next l a)) *> e)
+                    | n, l, 0, suc k => nc k (pmap (\lam t => get t (suc k)) (inv (insert0=next l a)) *> e)
+                    | suc n, next-fsl h l, suc i, suc k => exp-not-contains l a i x na (\lam t => nc (suc t)) k e
+                    | suc n, next-fsl h l, suc i, 0 => nc 0 e
+        }
+
+\func map {A B : \Type} {n : Nat} (f : A -> B) (l : FixedSizeList A n) : FixedSizeList B n \elim n, l
+    | 0, nil-fsl => nil-fsl
+    | suc n, next-fsl a l => next-fsl (f a) (map f l)
+
+\func map-change {A B : \Type} {n : Nat} (f : A -> B) (l : FixedSizeList A n) (i : Fin n) : f (get l i) = get (map f l) i \elim n, l, i
+    | suc n, next-fsl a l, 0 => idp {B} {f a}
+    | suc n, next-fsl a l, suc i => map-change f l i
+
+\func map-inj {A B : \Type} {n : Nat} (f : A -> B) (l : FixedSizeList A n) (ij : inj f) (un : uniquies l) : uniquies (map f l) =>
+    \lam i j eq => un i j (ij (get l i) (get l j) (map-change f l i *> eq *> inv (map-change f l j)))
+
+\func map-surj {A B : \Type} {n : Nat} (f : A -> B) (l : FixedSizeList A n) (sj : surj f) (al : allin l) : allin (map f l) =>
+    \lam (b : B) => ((al (sj b).1).1, inv (map-change f l (al (sj b).1).1) *> pmap f (al (sj b).1).2 *> (sj b).2)
+
+\func concat-list {A : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList A k) : FixedSizeList A (k + n) \elim n, k, a, b
+    | 0, k, nil-fsl, b => b
+    | suc n, k, next-fsl ah at, b => next-fsl ah (concat-list at b)
+
+\func concat-eq {A : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList A k) (i : Fin (k + n)) :
+    Or (\Sigma (j : Fin n) (get (concat-list a b) i = get a j)) (\Sigma (j : Fin k) (get (concat-list a b) i = get b j)) \elim n, k, a, b, i
+    | 0, k, nil-fsl, b, i => inr (i, idp)
+    | suc n, k, next-fsl ah at, b, 0 => inl (0, idp)
+    | suc n, k, next-fsl ah at, b, suc i => \case concat-eq at b i \with {
+        | inl (i, e) => inl (suc i, e)
+        | inr (i, e) => inr (i, e)
+    }
+
+\func concat-eq-left {A : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList A k) (i : Fin n) :
+    \Sigma (j : Fin (k + n)) (get (concat-list a b) j = get a i) \elim n, k, a, b, i
+    | suc n, k, next-fsl ah at, b, 0 => (0, idp)
+    | suc n, k, next-fsl ah at, b, suc i => \case concat-eq-left at b i \with {
+        | (j, e) => (suc j, e)
+    }
+
+\func concat-eq-left-val {A : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList A k) (i : Fin n) :
+    i + 0 = (concat-eq-left a b i).1 \elim n, k, a, b, i
+    | suc n, k, next-fsl ah at, b, 0 => idp 
+    | suc n, k, next-fsl ah at, b, suc i => pmap suc (concat-eq-left-val at b i) 
+
+\func concat-eq-right {A : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList A k) (i : Fin k) :
+    \Sigma (j : Fin (k + n)) (get (concat-list a b) j = get b i) \elim n, k, a, b, i
+    | 0, k, nil-fsl, b, i => (i, idp)
+    | suc n, k, next-fsl ah at, b, i => \case concat-eq-right at b i \with {
+        | (j, e) => (suc j, e)
+    }
+
+\func concat-uniq-disj {A : \Type} {n k : Nat}
+    (a : FixedSizeList A n)
+    (b : FixedSizeList A k)
+    (x : A)
+    (disa : \Pi (i : Fin n) (get a i = x) -> Empty)
+    (disb : \Pi (i : Fin k) (get b i = x) -> Empty)
+    (i : Fin (k + n)) (e : get (concat-list a b) i = x) : Empty \elim n, k, a, b, i
+        | 0, k, nil-fsl, b, i => disb i e
+        | suc n, k, next-fsl ah at, b, 0 => disa 0 e
+        | suc n, k, next-fsl ah at, b, suc i => concat-uniq-disj at b x
+            (\lam j => disa (suc j)) disb i e
+
+\func concat-uniq {A : \Type} {n k : Nat}
+    (a : FixedSizeList A n) (ua : uniquies a)
+    (b : FixedSizeList A k) (ub : uniquies b)
+    (dis : \Pi (i : Fin n) (j : Fin k) (get a i = get b j) -> Empty) : uniquies (concat-list a b) \elim n, k, a, b
+        | 0, k, nil-fsl, b => ub
+        | suc n, k, next-fsl ah at, b => (add-uniq
+            (concat-list at b)
+            (concat-uniq at (remove-uniq ah at ua).2 b ub (\lam (i : Fin n) => dis (suc i)))
+            (ah)
+            (concat-uniq-disj at b ah (\lam (i : Fin n) (e : get at i = ah) => suc/=0 (ua (suc i) 0 e)) (\lam (i : Fin k) (e : get b i = ah) => dis 0 i (inv e)))
+        )
+
+\func concat-eq-right-val {A : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList A k) (i : Fin k) :
+    i + n = (concat-eq-right a b i).1 \elim n, k, a, b, i
+    | 0, k, nil-fsl, b, i => idp
+    | suc n, k, next-fsl ah at, b, i => pmap suc (concat-eq-right-val at b i)
+
+\func cart-prod-list {A B : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList B k) : FixedSizeList (\Sigma A B) (k * n) \elim n, a
+    | 0, nil-fsl => nil-fsl
+    | suc n, next-fsl ah at => concat-list (map (\lam x => (ah, x)) b) (cart-prod-list at b)
+
+\func cart-prod-eq {A B : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList B k) (i : Fin (k * n))
+    : \Sigma (j : Fin n) (k1 : Fin k) ((get (cart-prod-list a b) i) = (get a j, get b k1)) \elim n, a, i
+    | suc n, next-fsl ah at, i => \case concat-eq (map (\lam x => (ah, x)) b) (cart-prod-list at b) i \with {
+        | inl (j, e) => (0, j, e *> inv (map-change (\lam x => (ah, x)) b j))
+        | inr (j, e) => \case cart-prod-eq at b j \with {
+            | (j1, k1, e1) => (suc j1, k1, e *> e1)
+        }
+    }
+
+\func cart-prod-eq-inv {A B : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList B k) (i : Fin n) (j : Fin k)
+    : \Sigma (k1 : Fin (k * n)) ((get (cart-prod-list a b) k1) = (get a i, get b j)) \elim n, a, i, j
+    | suc n, next-fsl ah at, 0, j => \case concat-eq-left (map (\lam x => (ah, x)) b) (cart-prod-list at b) j \with {
+        | (k1, e) => (k1, e *> inv (map-change (\lam x => (ah, x)) b j))
+    }
+    | suc n, next-fsl ah at, suc i, j => \case cart-prod-eq-inv at b i j \with {
+        | (k1, e) => \case concat-eq-right (map (\lam x => (ah, x)) b) (cart-prod-list at b) k1 \with {
+            | (k2, e1) => (k2, e1 *> e)
+        }
+    }
+
+\func cart-prod-eq-inv-val {A B : \Type} {n k : Nat} (a : FixedSizeList A n) (b : FixedSizeList B k) (i : Fin n) (j : Fin k)
+    : k * i + j = (cart-prod-eq-inv a b i j).1 \elim n, a, i, j
+    | suc n, next-fsl ah at, 0, j => concat-eq-left-val (map (\lam x => (ah, x)) b) (cart-prod-list at b) j
+    | suc n, next-fsl ah at, suc i, j => NatSemiring.+-assoc {k * i} {k} {j} *> 
+        pmap (\lam x => (k * i) + x) (NatSemiring.+-comm {k} {j}) *>
+        inv (NatSemiring.+-assoc {k * i} {j} {k}) *>
+        pmap (\lam x => x + k) (cart-prod-eq-inv-val at b i j) *>
+        concat-eq-right-val (map (\lam x => (ah, x)) b) (cart-prod-list at b) (cart-prod-eq-inv at b i j).1
+
+\func eq-nat-to-fin {n : Nat} (i j : Fin n) (e : = {Nat} i j) : i = j \elim n, i, j
+    | suc n, 0, 0 => idp
+    | suc n, suc i, 0 => \case suc/=0 e \with {}
+    | suc n, 0, suc j =>  \case suc/=0 (inv e) \with {}
+    | suc n, suc i, suc j => pmap fsuc (eq-nat-to-fin i j (NatSemiring.cancel-right 1 e))
+
+\func habbitate-fin/=0 {k : Nat} (x : Fin k) (e : k = 0) : Empty \elim k
+    | 0 => \case x \with {}
+    | suc k => suc/=0 e
+
+\func uniq-left-cart-prod {A B : \Type} {n k : Nat}
+    (a : FixedSizeList A n) (b : FixedSizeList B k)
+    (bi : Fin k)
+    (un : uniquies (cart-prod-list a b)) (i j : Fin n) (e : get a i = get a j) : i = j =>
+        eq-nat-to-fin i j (NatSemiring.cancel_*-left {k} (habbitate-fin/=0 bi) {i} {j} (
+            NatSemiring.cancel-right bi (
+                cart-prod-eq-inv-val a b i bi *>
+                (un (cart-prod-eq-inv a b i bi).1 (cart-prod-eq-inv a b j bi).1 (
+                    (cart-prod-eq-inv a b i bi).2 *>
+                    pmap (\lam x => (x, get b bi)) e *>
+                    inv (cart-prod-eq-inv a b j bi).2
+                )) *>
+                inv (cart-prod-eq-inv-val a b j bi)
+            )
+        ))
+
+\func uniq-right-cart-prod {A B : \Type} {n k : Nat}
+    (a : FixedSizeList A n) (b : FixedSizeList B k)
+    (ai : Fin n)
+    (un : uniquies (cart-prod-list a b)) (i j : Fin k) (e : get b i = get b j) : i = j =>
+        eq-nat-to-fin i j (NatSemiring.cancel-left (k * ai) (
+                cart-prod-eq-inv-val a b ai i *>
+                (un (cart-prod-eq-inv a b ai i).1 (cart-prod-eq-inv a b ai j).1 (
+                    (cart-prod-eq-inv a b ai i).2 *>
+                    pmap (\lam x => (get a ai, x)) e *>
+                    inv (cart-prod-eq-inv a b ai j).2
+                )) *>
+                inv (cart-prod-eq-inv-val a b ai j)
+            )
+        )
+
+\func uniq-cart-prod {A B : \Type} {n k : Nat}
+    (aex : A) (bex : B)
+    (a : FixedSizeList A n) (b : FixedSizeList B k)
+    (al : allin (cart-prod-list a b))
+    (un : uniquies (cart-prod-list a b)) :
+    \Sigma (uniquies a) (uniquies b) (allin a) (allin b) => (
+        (uniq-left-cart-prod a b (cart-prod-eq a b (al (aex, bex)).1).2 un),
+        (uniq-right-cart-prod a b (cart-prod-eq a b (al (aex, bex)).1).1 un),
+        (\lam (ax : A) => (
+            (cart-prod-eq a b (al (ax, bex)).1).1, 
+            pmap (\lam x => x.1) (
+                inv ((cart-prod-eq a b (al (ax, bex)).1).3) *>
+                (al (ax, bex)).2
+            )
+        )),
+        (\lam (bx : B) => (
+            (cart-prod-eq a b (al (aex, bx)).1).2, 
+            pmap (\lam x => x.2) (
+                inv ((cart-prod-eq a b (al (aex, bx)).1).3) *>
+                (al (aex, bx)).2
+            )
+        ))
+    )
+
+\func uniq-cart-prod-inv {A B : \Type} {n k : Nat}
+    (a : FixedSizeList A n) (ua : uniquies a)
+    (b : FixedSizeList B k) (ub : uniquies b) : uniquies (cart-prod-list a b) \elim n, a
+    | 0, nil-fsl => (\lam i => \case i \with {})
+    | suc n, next-fsl ah at => concat-uniq
+        (map (\lam x => (ah, x)) b)
+        (map-inj (\lam x => (ah, x)) b (\lam (x y : B) (e : (ah, x) = (ah, y)) => pmap (\lam t => t.2) e) ub)
+        (cart-prod-list at b)
+        (uniq-cart-prod-inv at (remove-uniq ah at ua).2 b ub)
+        (\lam (i : Fin k) (j : Fin (k * n)) (e : get (map (\lam x => (ah, x)) b) i = get (cart-prod-list at b) j) =>
+            (remove-uniq ah at ua).1 (cart-prod-eq at b j).1 (pmap (\lam t => t.1) (inv (cart-prod-eq at b j).3 *> inv (e) *> inv (map-change (\lam x => (ah, x)) b i)))
+        )
+
+\func all-cart-prod-inv {A B : \Type} {n k : Nat}
+    (a : FixedSizeList A n) (ala : allin a)
+    (b : FixedSizeList B k) (alb : allin b)
+    (p : \Sigma A B) : \Sigma (i : Fin (k * n)) (get (cart-prod-list a b) i = p) =>
+    (
+        (cart-prod-eq-inv a b (ala p.1).1 (alb p.2).1).1,
+        (cart-prod-eq-inv a b (ala p.1).1 (alb p.2).1).2 *> sigma-eq ((ala p.1).2) ((alb p.2).2)
+    )
+
+\func cart-prod-projection {A B : \Type} {n : Nat} 
+    (l : FixedSizeList (\Sigma A B) n) (u : uniquies l) (al : allin l)
+    (a : A) (zd : \Pi (x : A) -> Or (x = a) (x = a -> Empty))
+    : \Sigma (k : Nat) (r : FixedSizeList B k) (uniquies r) (allin r) => \case impl l u a zd \with {
+        | (k, r, ur, r-l, l-r) => (k, r, ur, (\lam (b : B) => 
+            \case (l-r (al (a, b)).1) \with {
+                | inl (j, e) => (j, pmap (\lam x => x.2) (inv e *> (al (a, b)).2))
+                | inr ne => \case ne (pmap (\lam x => x.1) (al (a, b)).2) \with {}
+            }
+        ))
+    } 
+    \where {
+        \func exp-r-l-eq {n k : Nat} {A B : \Type}
+            (l : FixedSizeList (\Sigma A B) n)
+            (r : FixedSizeList B k)
+            (ha : A) (hb : B) (a : A) (e : ha = a)
+            (f : \Pi (i : Fin k) -> \Sigma (j : Fin n) (get l j = (a, get r i)))
+            (i : Fin (suc k)) : \Sigma (j : Fin (suc n)) (get (next-fsl (ha, hb) l) j = (a, get (next-fsl hb r) i)) \elim i
+                | 0 => (0, pmap (\lam x => (x, hb)) e)
+                | suc i => \case f i \with {
+                    | (j, e1) => (fsuc j, e1)
+                }
+
+        \func exp-l-r-eq {n k : Nat} {A B : \Type}
+            (l : FixedSizeList (\Sigma A B) n)
+            (r : FixedSizeList B k)
+            (ha : A) (hb : B) (a : A) (e : ha = a)
+            (f : \Pi (i : Fin n) -> Or (\Sigma (j : Fin k) (get l i = (a, get r j))) ((get l i).1 = a -> Empty))
+            (i : Fin (suc n)) : Or (\Sigma (j : Fin (suc k)) (get (next-fsl (ha, hb) l) i = (a, get (next-fsl hb r) j))) ((get (next-fsl (ha, hb) l) i).1 = a -> Empty) \elim i
+                | 0 => inl (0, pmap (\lam x => (x, hb)) e)
+                | suc i => \case f i \with {
+                    | inl (t, e1) => inl (suc t, e1)
+                    | inr ne => inr ne
+                }
+        
+        \func exp-r-l-neq {n k : Nat} {A B : \Type}
+            (l : FixedSizeList (\Sigma A B) n)
+            (r : FixedSizeList B k)
+            (ha : A) (hb : B) (a : A) (ne : ha = a -> Empty)
+            (f : \Pi (i : Fin k) -> \Sigma (j : Fin n) (get l j = (a, get r i)))
+            (i : Fin k) : \Sigma (j : Fin (suc n)) (get (next-fsl (ha, hb) l) j = (a, get r i)) => \case f i \with {
+                | (j, e1) => (suc j, e1)
+            }
+        
+        \func exp-l-r-neq {n k : Nat} {A B : \Type}
+            (l : FixedSizeList (\Sigma A B) n)
+            (r : FixedSizeList B k)
+            (ha : A) (hb : B) (a : A) (ne : ha = a -> Empty)
+            (f : \Pi (i : Fin n) -> Or (\Sigma (j : Fin k) (get l i = (a, get r j))) ((get l i).1 = a -> Empty))
+            (i : Fin (suc n)) : Or (\Sigma (j : Fin k) (get (next-fsl (ha, hb) l) i = (a, get r j))) ((get (next-fsl (ha, hb) l) i).1 = a -> Empty) \elim i 
+                | 0 => inr ne
+                | suc i => f i
+
+        \func impl {A B : \Type} {n : Nat} 
+            (l : FixedSizeList (\Sigma A B) n) (u : uniquies l)
+            (a : A) (zd : \Pi (x : A) -> Or (x = a) (x = a -> Empty))
+            : \Sigma (k : Nat) (r : FixedSizeList B k) (uniquies r)
+            (\Pi (i : Fin k) -> \Sigma (j : Fin n) (get l j = (a, get r i)))
+            (\Pi (i : Fin n) -> Or (\Sigma (j : Fin k) (get l i = (a, get r j))) ((get l i).1 = a -> Empty)) \elim n, l
+            | 0, nil-fsl => (0, nil-fsl, (\lam i => \case i \with {}), (\lam i => \case i \with {}), (\lam i => \case i \with {}))
+            | suc n, next-fsl (ha, hb) l => \case zd ha, impl l (remove-uniq (ha, hb) l u).2 a zd \with {
+                | inl e, (k, r, ur, r-l, l-r) => (
+                    suc k,
+                    next-fsl hb r,
+                    add-uniq r ur hb (\lam (i : Fin k) (e1 : get r i = hb) =>
+                        suc/=0 (u (suc (r-l i).1) 0 ((r-l i).2 *> pmap (\lam x => (a, x)) e1 *> pmap (\lam x => (x, hb)) (inv e)))
+                    ),
+                    exp-r-l-eq l r ha hb a e r-l,
+                    exp-l-r-eq l r ha hb a e l-r
+                )
+                | inr ne, (k, r, ur, r-l, l-r) => (
+                    k,
+                    r,
+                    ur,
+                    exp-r-l-neq l r ha hb a ne r-l,
+                    exp-l-r-neq l r ha hb a ne l-r
+                )
+            }
+    }
+
+\lemma inj-size-f {n k : Nat} (f : Fin n -> Fin k) (ij : inj f) : n LinearOrder.<= k => FinSet.FinCardInj f ij
+
+\lemma surj-size-f {n k : Nat} (f : Fin n -> Fin k) (sj : surj f) : k LinearOrder.<= n =>
+    inj-size-f {k} {n}
+        (\lam (i : Fin k) => (sj i).1)
+        (\lam (i j : Fin k) (e : (sj i).1 = (sj j).1) => inv (sj i).2 *> pmap f e *> (sj j).2)
+
+\lemma bij-size-f {n k : Nat} (f : Fin n -> Fin k) (bj : bij f) : n = k =>
+    LinearOrder.<-connectedness (surj-size-f f bj.2) (inj-size-f f bj.1)
+
+\lemma fin-set-len {n k : Nat} (l : FixedSizeList (Fin n) k) (u : uniquies l) (a : allin l) : k = n =>
+    bij-size-f (\lam (i : Fin k) => get l i) (u, a)
+
+\func uniq-full-set-len {A : \Type} {n k : Nat}
+    (a : FixedSizeList A n) (ua : uniquies a) (ala : allin a)
+    (b : FixedSizeList A k) (ub : uniquies b) (alb : allin b) : n = k =>
+    inv (fin-set-len (map {A} {Fin n} {k} (\lam x => (ala x).1) b) (map-inj
+            (\lam x => (ala x).1) b
+            (\lam (x y : A) (e : (ala x).1 = (ala y).1) => inv (ala x).2 *> pmap (get a) e *> (ala y).2)
+            ub
+        )
+        (map-surj
+            (\lam x => (ala x).1) b
+            (\lam (i : Fin n) => (
+                get a i,
+                (ua
+                    (ala (get a i)).1
+                    i
+                    (ala (get a i)).2
+                )
+            ))
+            alb
+        ))
+
+\func zero-in-perm {n : Nat} (p : Perm (suc n)) : \Sigma (i : Fin (suc n)) (get (get-list p) i = 0) =>
+    zero-in-perm-acc (get-list p) (get-uniq-prop p) nil-fsl (\lam (i : Fin 0) => \case i \with {}) (\lam (i : Fin (suc n)) (j : Fin 0) => \case j \with {}) idp
+    \where {
+        \func not-contains-add {k p n : Nat} (h : Fin n)
+            (l : FixedSizeList (Fin (suc n)) k) (ul : uniquies (next-fsl (suc h) l))
+            (acc : FixedSizeList (Fin n) p)
+            (dis : \Pi (i : Fin (suc k)) (j : Fin p) -> (get (next-fsl (suc h) l) i = suc (get acc j)) -> Empty)
+            (i : Fin k) (j : Fin (suc p)) (e : get l i = suc (get (next-fsl h acc) j)) : Empty \elim p, j
+                | p, 0 => suc/=0 (ul (suc i) 0 e)
+                | p, suc j => dis (suc i) j e
+
+        \func zero-in-perm-acc {n k p : Nat} 
+            (l : FixedSizeList (Fin (suc n)) k) (ul : uniquies l)
+            (acc : FixedSizeList (Fin n) p) (uacc : uniquies acc)
+            (dis : \Pi (i : Fin k) (j : Fin p) -> (get l i = suc (get acc j)) -> Empty)
+            (e : suc n = k + p)
+            : \Sigma (i : Fin k) (get l i = 0) \elim n, k, l
+                | n, 0, nil-fsl => \case LinearOrder.notLess (FinSet.FinCardInj (get acc) uacc) (LinearOrder.<-transitive-left (id<suc {n}) (Preorder.=_<= e)) \with {}
+                | n, suc k, next-fsl 0 l => (0, idp)
+                | n, suc k, next-fsl (suc h) l => \case (zero-in-perm-acc
+                    l (remove-uniq (suc h) l ul).2
+                    (next-fsl h acc) (add-uniq acc uacc h (\lam (i : Fin p) (e : get acc i = h) => dis 0 i (inv (pmap fsuc e))))
+                    (not-contains-add h l ul acc dis)
+                    (e *> NatSemiring.+-assoc {k} {1} {p} *> pmap (\lam x => k + x) (NatSemiring.+-comm {1} {p}))
+                ) \with {
+                    | (i, e) => (suc i, e)
+                }
+
+        \func zero-in-perm-acc-insert-erase {n k p : Nat} 
+            (l : FixedSizeList (Fin (suc n)) (suc k)) (ul : uniquies l)
+            (acc : FixedSizeList (Fin n) p) (uacc : uniquies acc)
+            (dis : \Pi (i : Fin (suc k)) (j : Fin p) -> (get l i = suc (get acc j)) -> Empty)
+            (e : suc n = (suc k) + p)
+            : insert (erase l ((zero-in-perm-acc l ul acc uacc dis e).1 : Fin (suc k))) 0 ((zero-in-perm-acc l ul acc uacc dis e).1 : Fin (suc k)) = l \elim n, k, l
+                | n, 0, next-fsl (suc h) nil-fsl => \case LinearOrder.notLess 
+                    (FinSet.FinCardInj (get (next-fsl h acc)) (add-uniq acc uacc h (\lam (i : Fin p) (e : get acc i = h) => dis 0 i (inv (pmap fsuc e)))))
+                    (LinearOrder.<-transitive-left (id<suc {n}) (Preorder.=_<= (e *> NatSemiring.+-comm {1} {p}))) \with {}
+                | n, k, next-fsl 0 l => pmap (\lam t => insert t 0 (0 : Fin (suc k))) (erase0= (0 : Fin (suc n)) l) *> insert0=next l (0 : Fin (suc n))
+                | n, (suc k), next-fsl (suc h) l => pmap (\lam t => next-fsl (suc h) t) (zero-in-perm-acc-insert-erase
+                    l (remove-uniq (suc h) l ul).2
+                    (next-fsl h acc) (add-uniq acc uacc h (\lam (i : Fin p) (e : get acc i = h) => dis 0 i (inv (pmap fsuc e))))
+                    (not-contains-add h l ul acc dis)
+                    (e *> NatSemiring.+-assoc {(suc k)} {1} {p} *> pmap (\lam x => (suc k) + x) (NatSemiring.+-comm {1} {p})))
+    }
+
+\func perm-from-non-zero {n : Nat} (l : FixedSizeList (Fin (suc n)) n) (u : uniquies l) (nz : \Pi (i : Fin n) -> (get l i = 0) -> Empty) : Perm n => 
+    \case build-perm l u nz \with {
+        | (r, u, _) => perm r u
+    }
+    \where {
+        \func exp-bj {n k : Nat} (a : Fin n) (l : FixedSizeList (Fin (suc n)) k) (r : FixedSizeList (Fin n) k) 
+            (bj : \Pi (i : Fin k) -> (get l i = fsuc (get r i))) (i : Fin (suc k)) : get (next-fsl (suc a) l) i = fsuc (get (next-fsl a r) i) \elim i
+                | 0 => idp
+                | suc i => bj i
+
+        \func build-perm {n k : Nat} (l : FixedSizeList (Fin (suc n)) k) (u : uniquies l) (nz : \Pi (i : Fin k) -> (get l i = 0) -> Empty)
+            : \Sigma (r : FixedSizeList (Fin n) k) (uniquies r) (\Pi (i : Fin k) -> (get l i = fsuc (get r i))) \elim k, l
+            | 0, nil-fsl => (nil-fsl, (\lam i => \case i \with {}), (\lam i => \case i \with {}))
+            | suc k, next-fsl 0 l => \case nz 0 idp \with {}
+            | suc k, next-fsl (suc a) l => \case build-perm l (remove-uniq (suc a) l u).2 (\lam i => nz (suc i)) \with {
+                | (r, ur, bj) => (
+                    next-fsl a r,
+                    add-uniq r ur a (\lam (i : Fin k) (e : get r i = a) =>
+                        suc/=0 (inv (u 0 (suc i) (inv ((bj i) *> (pmap fsuc e)))))
+                    ),
+                    exp-bj a l r bj 
+                )
+            }
+        
+        \func build-perm-list-eq {n k : Nat}
+            (x y : FixedSizeList (Fin (suc n)) k)
+            (ux : uniquies x) (nzx : \Pi (i : Fin k) -> (get x i = 0) -> Empty)
+            (uy : uniquies y) (nzy : \Pi (i : Fin k) -> (get y i = 0) -> Empty)
+            (e : x = y)
+            : (build-perm x ux nzx).1 = (build-perm y uy nzy).1 => path (\lam i => (build-perm (e i) (pathInProp _ _ _ i) (pathInProp _ _ _ i)).1)
+        
+        \func build-perm-mapfsuc {n k : Nat}
+            (l : FixedSizeList (Fin n) k)
+            (u : uniquies (map fsuc l)) (nz : \Pi (i : Fin k) -> (get (map fsuc l) i = 0) -> Empty)
+            : (build-perm (map fsuc l) u nz).1 = l \elim k, l
+            | 0, nil-fsl => idp
+            | suc k, next-fsl a l => pmap (\lam t => next-fsl a t) (build-perm-mapfsuc l (remove-uniq (fsuc a) (map fsuc l) u).2 (\lam i => nz (suc i)))
+        
+        \func build-perm-eq {n k : Nat} (l : FixedSizeList (Fin (suc n)) k) (u : uniquies l) (nz : \Pi (i : Fin k) -> (get l i = 0) -> Empty)
+            : map fsuc (build-perm l u nz).1 = l \elim k, l
+            | 0, nil-fsl => idp
+            | suc k, next-fsl 0 l => \case nz 0 idp \with {}
+            | suc k, next-fsl (suc a) l => pmap (\lam t => next-fsl (fsuc a) t) (build-perm-eq l (remove-uniq (suc a) l u).2 (\lam i => nz (suc i)))
+    }
+
+\func all-fin-list (n : Nat) : \Sigma (l : FixedSizeList (Fin n) n) (uniquies l) (allin l) \elim n
+    | 0 => (nil-fsl, (\lam i => \case i \with {}), (\lam i => \case i \with {}))
+    | suc n => \case (all-fin-list n) \with {
+        | (l, u, a) => (
+            next-fsl (0 : Fin (suc n)) (map fsuc l),
+            add-uniq (map fsuc l) (map-inj fsuc l FinSet.suc-isInj u) (0 : Fin (suc n)) (\lam (i : Fin n) (e : get (map fsuc l) i = 0) =>
+                suc/=0 (map-change fsuc l i *> e)
+            ),
+            (all-exp l a)
+        )
+    } \where {
+        \func all-exp {n : Nat} (l : FixedSizeList (Fin n) n) (a : allin l) (i : Fin (suc n))
+            : \Sigma (j : Fin (suc n)) (get (next-fsl (0 : Fin (suc n)) (map fsuc l)) j = i) \elim i
+                | 0 => (0, idp)
+                | suc i => \case a i \with {
+                    | (j, e) => (suc j, inv (map-change fsuc l j) *> pmap fsuc e)
+                }
+    }
+
+\func perm-eq {n : Nat} (a b : Perm n) (e : get-list a = get-list b) : a = b \elim a, b
+    | perm al au, perm bl bu =>
+        path (\lam i => perm (e i) (pathInProp _ _ _ i))
+
+\func fin-det {n : Nat} (a b : Fin n) : Or (b = a) (b = a -> Empty) \elim n, a, b
+    | suc n, 0, 0 => inl idp
+    | suc n, suc a, 0 => inr (\lam (e : 0 = {Fin (suc n)} suc a) => suc/=0 (inv e))
+    | suc n, 0, suc b => inr (\lam (e : suc b = 0) => suc/=0 e)
+    | suc n, suc a, suc b => \case fin-det a b \with {
+        | inl e => inl (pmap fsuc e)
+        | inr ne => inr (\lam (e : suc b = suc a) => ne (FinSet.suc-isInj b a e))
+    }
+
+\func perm-len {n k : Nat} (l : FixedSizeList (Perm n) k) (un : uniquies l) (al : allin l) : k = fact n \elim n, k, l
+    | 0, 0, nil-fsl => \case (al (perm nil-fsl (\lam (i : Fin 0) => \case i \with {}))).1 \with {}
+    | 0, 1, next-fsl _ _ => idp
+    | 0, suc (suc k), next-fsl x (next-fsl y _) => \case suc/=0 (un 1 0 (empty-perm y x)) \with {}
+    | suc n, k, l => (uniq-full-set-len (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al)
+        (cart-prod-list (all-fin-list (suc n)).1 (cart-prod-projection (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al) (0 : Fin (suc n)) (fin-det (0 : Fin (suc n)))).2)
+        (uniq-cart-prod-inv
+            (all-fin-list (suc n)).1
+            (all-fin-list (suc n)).2
+            (cart-prod-projection (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al) (0 : Fin (suc n)) (fin-det (0 : Fin (suc n)))).2
+            (cart-prod-projection (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al) (0 : Fin (suc n)) (fin-det (0 : Fin (suc n)))).3
+        )
+        (all-cart-prod-inv 
+            (all-fin-list (suc n)).1
+            (all-fin-list (suc n)).3
+            (cart-prod-projection (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al) (0 : Fin (suc n)) (fin-det (0 : Fin (suc n)))).2
+            (cart-prod-projection (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al) (0 : Fin (suc n)) (fin-det (0 : Fin (suc n)))).4
+        )
+    ) *>
+    pmap (\lam x => x * (suc n)) (perm-len
+        (cart-prod-projection (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al) (0 : Fin (suc n)) (fin-det (0 : Fin (suc n)))).2
+        (cart-prod-projection (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al) (0 : Fin (suc n)) (fin-det (0 : Fin (suc n)))).3
+        (cart-prod-projection (map perm-to-pair l) (map-inj perm-to-pair l perm-to-pair-inj un) (map-surj perm-to-pair l perm-to-pair-surj al) (0 : Fin (suc n)) (fin-det (0 : Fin (suc n)))).4
+    )
+    \where {
+        \func empty-perm (p : Perm 0) (q : Perm 0) : p = q \elim p, q
+            | perm nil-fsl u1, perm nil-fsl u2 => idp 
+
+        \func perm-to-pair {n : Nat} (p : Perm (suc n)) : \Sigma (Fin (suc n)) (Perm n) => \case zero-in-perm p \with {
+            | (i, e) => (
+                i,
+                perm-from-non-zero
+                    (erase (get-list p) i)
+                    (erase-uniq (get-list p) i (get-uniq-prop p)).2
+                    (\lam (j : Fin n) (ez : get (erase (get-list p) i) j = 0) =>
+                        (erase-uniq (get-list p) i (get-uniq-prop p)).1 j (ez *> (inv e))
+                    )
+            )
+        }
+
+        \func perm-to-pair-first {n : Nat} (p : Perm (suc n)) :
+        (perm-to-pair p).1 = (zero-in-perm.zero-in-perm-acc (get-list p) (get-uniq-prop p) nil-fsl (\lam (i : Fin 0) => \case i \with {}) (\lam (i : Fin (suc n)) (j : Fin 0) => \case j \with {}) idp).1 => idp
+
+        \func expand-perm {n : Nat} (x : \Sigma (Fin (suc n)) (Perm n)) : Perm (suc n) =>
+            perm (insert (map fsuc (get-list x.2)) 0 x.1) (insert-uniq (map fsuc (get-list x.2))
+                (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2)) 0 x.1
+                (
+                    \lam (j : Fin n) (e : get (map fsuc (get-list x.2)) j = 0) =>
+                        suc/=0 (map-change fsuc (get-list x.2) j *> e)
+                ))
+
+        \func perm-to-pair-val {n : Nat} (p : Perm (suc n)) : expand-perm (perm-to-pair p) = p =>
+            perm-eq (expand-perm (perm-to-pair p)) p 
+                (
+                    pmap (\lam t => insert t 0 (perm-to-pair p).1) (perm-from-non-zero.build-perm-eq
+                        (erase (get-list p) (zero-in-perm.zero-in-perm-acc (get-list p) (get-uniq-prop p) nil-fsl (\lam i => (\case i \with {})) (\lam i j => (\case j \with {})) idp).1)
+                        (erase-uniq (get-list p) (zero-in-perm.zero-in-perm-acc (get-list p) (get-uniq-prop p) nil-fsl (\lam i => (\case i \with {})) (\lam i j => (\case j \with {})) idp).1 (get-uniq-prop p)).2
+                        (\lam j ez => 
+                            (erase-uniq (get-list p) (zero-in-perm.zero-in-perm-acc (get-list p) (get-uniq-prop p) nil-fsl (\lam i => (\case i \with {})) (\lam i j => (\case j \with {})) idp).1 (get-uniq-prop p)).1
+                            j
+                            (ez *> inv (zero-in-perm.zero-in-perm-acc (get-list p) (get-uniq-prop p) nil-fsl (\lam (i : Fin 0) => \case i \with {}) (\lam (i : Fin (suc n)) (j : Fin 0) => \case j \with {}) idp).2)
+                        )
+                    ) *>
+                    pmap (\lam t => 
+                        insert (erase (get-list p) (zero-in-perm.zero-in-perm-acc
+                            (get-list p)
+                            (get-uniq-prop p)
+                            nil-fsl
+                            (\lam i => (\case i \with {}))
+                            (\lam i j => (\case j \with {})) idp).1
+                        ) 0 t
+                    ) (perm-to-pair-first p) *>
+                    zero-in-perm.zero-in-perm-acc-insert-erase (get-list p) (get-uniq-prop p) nil-fsl (\lam i => (\case i \with {})) (\lam i j => (\case j \with {})) idp
+                )
+
+        \func perm-to-pair-val-inv {n : Nat} (x : \Sigma (Fin (suc n)) (Perm n)) : perm-to-pair (expand-perm x) = x =>
+            sigma-eq
+                (
+                    (get-uniq-prop (expand-perm x) (zero-in-perm (expand-perm x)).1 x.1 ((zero-in-perm (expand-perm x)).2 *> (inv (insert-eq (map fsuc (get-list x.2)) 0 x.1))))
+                )
+                (perm-eq (perm-to-pair (expand-perm x)).2 x.2
+                    ((perm-from-non-zero.build-perm-list-eq 
+                        (erase (insert (map fsuc (get-list x.2)) 0 x.1) (zero-in-perm.zero-in-perm-acc 
+                            (insert (map fsuc (get-list x.2)) 0 x.1)
+                            (\box insert-uniq (map fsuc (get-list x.2)) (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2)) 0 x.1
+                                (\lam j e => suc/=0 (map-change fsuc (get-list x.2) j *> e))
+                            )
+                            nil-fsl
+                            (\lam i => (\case i \with {}))
+                            (\lam i j => (\case j \with {})) idp).1)
+                        (map fsuc (get-list x.2))
+                        (erase-uniq (insert (map fsuc (get-list x.2)) 0 x.1)
+                            (zero-in-perm.zero-in-perm-acc 
+                                (insert (map fsuc (get-list x.2)) 0 x.1)
+                                (\box insert-uniq (map fsuc (get-list x.2)) (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2)) 0 x.1 (\lam j e => suc/=0 (map-change fsuc (get-list x.2) j *> e)))
+                                nil-fsl
+                                (\lam i => (\case i \with {}))
+                                (\lam i j => (\case j \with {})) idp).1
+                            (\box insert-uniq (map fsuc (get-list x.2)) (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2)) 0 x.1 (\lam j e => suc/=0 (map-change fsuc (get-list x.2) j *> e)))).2
+                        (\lam j ez =>
+                            (erase-uniq
+                                (insert (map fsuc (get-list x.2)) 0 x.1)
+                                (zero-in-perm.zero-in-perm-acc
+                                    (insert (map fsuc (get-list x.2)) 0 x.1)
+                                    (\box insert-uniq (map fsuc (get-list x.2)) (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2)) 0 x.1 (\lam j e => suc/=0 (map-change fsuc (get-list x.2) j *> e))) nil-fsl (\lam i => (\case i \with {}))
+                                    (\lam i j => (\case j \with {})) idp
+                                ).1
+                                (\box insert-uniq
+                                    (map fsuc (get-list x.2))
+                                    (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2)) 0 x.1
+                                    (\lam j e => suc/=0 (map-change fsuc (get-list x.2) j *> e))
+                                )
+                            ).1
+                            j
+                            (ez *> inv (zero-in-perm.zero-in-perm-acc
+                                (insert (map fsuc (get-list x.2)) 0 x.1)
+                                (\box insert-uniq 
+                                    (map fsuc (get-list x.2)) 
+                                    (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2)) 0 x.1
+                                    (\lam j e => suc/=0 (map-change fsuc (get-list x.2) j *> e))
+                                )
+                                nil-fsl
+                                (\lam i => (\case i \with {}))
+                                (\lam i j => (\case j \with {}))
+                                idp
+                            ).2)
+                        )
+                        (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2))
+                        (\lam i e => suc/=0 (map-change fsuc (get-list x.2) i *> e))
+                        (
+                            pmap (\lam t => (erase (insert (map fsuc (get-list x.2)) 0 x.1) t)) (get-uniq-prop
+                                (expand-perm x)
+                                (zero-in-perm (expand-perm x)).1
+                                x.1
+                                ((zero-in-perm (expand-perm x)).2 *> (inv (insert-eq (map fsuc (get-list x.2)) 0 x.1)))
+                            ) *> erase-insert (map fsuc (get-list x.2)) x.1 0
+                        )
+                    ) *>
+                    (perm-from-non-zero.build-perm-mapfsuc
+                        (get-list x.2)
+                        (map-inj fsuc (get-list x.2) FinSet.suc-isInj (get-uniq-prop x.2))
+                        (\lam i e => suc/=0 (map-change fsuc (get-list x.2) i *> e))
+                    ))
+                )
+        
+        \func perm-to-pair-surj {n : Nat} (x : \Sigma (Fin (suc n)) (Perm n)) : \Sigma (p : Perm (suc n)) (perm-to-pair p = x) =>
+            (expand-perm x, perm-to-pair-val-inv x)
+
+        \func perm-to-pair-inj {n : Nat} (x y : Perm (suc n)) (e : perm-to-pair x = perm-to-pair y) : x = y =>
+            inv (perm-to-pair-val x) *> pmap expand-perm e *> perm-to-pair-val y
+    }
